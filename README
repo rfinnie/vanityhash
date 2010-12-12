@@ -14,11 +14,27 @@ types (MD5, SHA1, SHA256, etc).
 
 INSTALLATION
 
-vanityhash requires Perl 5.6.0 or newer.  vanityhash requires several 
-Perl modules, all of which are in a standard Perl installation (though 
-your distribution may split Perl into "base" and "standard" packages).  
-For SHA hashes and certain MD hashes, additional Perl modules may be 
-required.
+vanityhash effectively requires Perl 5.8.0 or newer.  Specifically, 
+vanityhash will work with Perl 5.6.0 or later, but requires Digest:: 
+modules that implement the clone() function, which was not available at 
+the time of the Perl 5.6 series.  As of Perl 5.8.0, Digest::MD5 was 
+distributed with the core Perl distribution, and most other Digest:: 
+modules included clone().
+
+The only required module not included with standard Perl installations 
+is Digest.  This may be obtained from your distribution (for example, 
+libdigest-perl on Debian-based systems), or from CPAN. For SHA hashes 
+and certain MD hashes, additional Perl modules may be required.  
+Optional modules include:
+
+  Digest::MD2
+  Digest::MD4
+  Digest::SHA
+  Digest::SHA1
+  Digest::CRC
+
+At the time of this writing, Digest::CRC's clone() support appears to 
+be broken.
 
 To "build" and install vanityhash:
 

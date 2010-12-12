@@ -20,8 +20,12 @@ test:
 	@perl -MSocket -e 'print "Socket is installed.\n";'
 	@perl -MPOSIX -e 'print "POSIX is installed.\n";'
 	@perl -MTime::HiRes -e 'print "Time::HiRes is installed.\n";'
+	@perl -MDigest::MD2 -e 'print "Digest::MD2 is installed.\n";' 2>/dev/null || echo 'Digest::MD2 is not installed (but optional).'
+	@perl -MDigest::MD4 -e 'print "Digest::MD4 is installed.\n";' 2>/dev/null || echo 'Digest::MD4 is not installed (but optional).'
 	@perl -MDigest::MD5 -e 'print "Digest::MD5 is installed.\n";' 2>/dev/null || echo 'Digest::MD5 is not installed (but optional).'
 	@perl -MDigest::SHA -e 'print "Digest::SHA is installed.\n";' 2>/dev/null || echo 'Digest::SHA is not installed (but optional).'
+	@perl -MDigest::SHA1 -e 'print "Digest::SHA1 is installed.\n";' 2>/dev/null || echo 'Digest::SHA1 is not installed (but optional).'
+	@perl -MDigest::CRC -e 'print "Digest::CRC is installed.\n";' 2>/dev/null || echo 'Digest::CRC is not installed (but optional).'
 	@echo 'All tests complete.'
 
 install: all

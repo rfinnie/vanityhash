@@ -20,7 +20,7 @@
 # 02110-1301, USA.
 ########################################################################
 
-my $VERSION = '0.2';
+my $VERSION = '1.1';
 
 use strict;
 use warnings;
@@ -113,7 +113,7 @@ if($opt_findpos < 0) {
 # All digest operations are lowercase.
 $opt_find = lc($opt_find);
 
-# Allowed: md2 md4 md5 sha*
+# Allowed: md2 md4 md5 sha1alt sha* crc*
 my(@digestarray, $digestdisp);
 if($opt_digesttype eq "md5") {
   $digestdisp = "MD5";
@@ -124,9 +124,15 @@ if($opt_digesttype eq "md5") {
 } elsif($opt_digesttype eq "md2") {
   $digestdisp = "MD2";
   @digestarray = ("MD2");
+} elsif($opt_digesttype eq "sha1alt") {
+  $digestdisp = "SHA1";
+  @digestarray = ("SHA1");
 } elsif($opt_digesttype =~ /^sha(\d+)$/) {
   $digestdisp = "SHA$1";
   @digestarray = ("SHA", $1);
+} elsif($opt_digesttype =~ /^crc(.*?)$/) {
+  $digestdisp = uc("CRC$1");
+  @digestarray = ("CRC", (type => lc("crc$1")));
 } else {
   die(sprintf("Unknown digest type: %s\n", $opt_digesttype));
 }
@@ -284,7 +290,7 @@ while((scalar keys %children) > 0) {
           print $msgdata;
           $printedappend = 1;
           # We won't need the workers anymore.
-          kill(POSIX::SIGINT, keys %children);
+          kill(POSIX::SIGINT(), keys %children);
         }
       } else {
         # Print a machine readable match line.
@@ -341,7 +347,7 @@ exit(0);
 
 sub parentsigint {
   print STDERR "User interrupt, cleaning up.\n" unless $opt_quiet;
-  kill(POSIX::SIGINT, keys %children);
+  kill(POSIX::SIGINT(), keys %children);
 }
 
 sub childsigint {
@@ -437,8 +443,9 @@ is the number of logical processors on the running system.
 
 The hashing digest type to use.  Default is "md5" Allowed values are 
 "md2", "md4", "md5", and "shaI<N>" where I<N> is a valid SHA digest 
-value.  Note that for many digest types, the appropriate Perl module 
-must be installed and available.
+value.  "sha1alt" is accepted to use Digest::SHA1 instead of 
+Digest::SHA.  Note that for many digest types, the appropriate Perl 
+module must be installed and available.
 
 =item B<-a>, B<--append>
 
