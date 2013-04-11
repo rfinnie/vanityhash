@@ -50,7 +50,7 @@ my($result) = GetOptions(
   'position|p=i' => \$opt_findpos,
   'any-position|y' => \$opt_anypos,
   'progress|s=f' => \$opt_progressint,
-  'workers|w=i' => \$opt_workers,
+  'workers|w=s' => \$opt_workers,
   'digest|d=s' => \$opt_digesttype,
   'append|a' => \$opt_append,
   'quiet|q' => \$opt_quiet,
@@ -98,11 +98,33 @@ if($opt_bits > 32) {
   $packtype = 'C';
 }
 
+# Determine number of workers (and which ones to launch)
+my($realworkers, $workerspace, @workers);
+if($opt_workers =~ /^\d+$/) {
+  $workerspace = $opt_workers;
+  for(my $i = 1; $i <= $workerspace; $i++) {
+    push(@workers, $i);
+  }
+  $realworkers = $opt_workers;
+} elsif($opt_workers =~ /^(\d+):([\d,]+)$/) {
+  $workerspace = $1;
+  foreach my $i (keys %{{ map { $_ => 1 } split(/,/, $2) }}) {
+    if(($i < 1) || ($i > $workerspace)) {
+      die("Invalid use of --workers flag.\n");
+    }
+    push(@workers, $i);
+  }
+  @workers = sort {$a <=> $b} @workers;
+  $realworkers = scalar(@workers);
+} else {
+  die("Invalid use of --workers flag.\n");
+}
+
 # This is an arbitrary restriction to protect users from themselves and 
 # exhaust resources.  If you happen to have a system with more than 64 
 # hardware threads, manually disable this check.  Also, could I borrow 
 # the system?
-if(($opt_workers < 1) || ($opt_workers > 64)) {
+if(($realworkers < 1) || ($realworkers > 64)) {
   die("Workers must be between 1 and 64, inclusive.\n");
 }
 
@@ -138,7 +160,7 @@ if($opt_digesttype eq "md5") {
 }
 
 my $findlen = length($opt_find);
-my $every = 100000 * $opt_workers;
+my $every = 100000 * $workerspace;
 
 # Create the initial context, and populate with the input.  Note: 
 # calculating the hash is a destructive act, so any hash calculations 
@@ -179,8 +201,13 @@ my($iosel) = IO::Select->new();
 my($childi, $childt);
 my($parentsock, $childsock);
 
-printf STDERR "Spawning %d worker%s... ", $opt_workers, ($opt_workers == 1 ? "" : "s") unless $opt_quiet;
-for($childt = 0; $childt < $opt_workers; $childt++) {
+if($realworkers == $workerspace) {
+  printf STDERR "Spawning %d worker%s... ", $realworkers, ($realworkers == 1 ? "" : "s") unless $opt_quiet;
+} else {
+  printf STDERR "Spawning %d of %d worker%s (%s)... ", $realworkers, $workerspace, ($realworkers == 1 ? "" : "s"), join(',', @workers) unless $opt_quiet;
+}
+foreach my $mychildt (@workers) {
+  $childt = $mychildt - 1;
   $childsock = undef;
   $parentsock = undef;
   # Create a socket pair for parent/child communications.
@@ -207,10 +234,10 @@ for($childt = 0; $childt < $opt_workers; $childt++) {
     @childsocks = ();
 
     my $nextprogress = $childt + $every;
-    for($childi = $childt; $childi < (2**$opt_bits-1); $childi += $opt_workers) {
+    for($childi = $childt; $childi < (2**$opt_bits-1); $childi += $workerspace) {
       if($childi >= $nextprogress) {
         $nextprogress = $childi + $every;
-        printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $opt_workers)+1;
+        printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
       }
 
       # Add the test data and determine the hash.
@@ -221,7 +248,7 @@ for($childt = 0; $childt < $opt_workers; $childt++) {
         printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $testdigest, $childi;
       }
     }
-    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (((2**$opt_bits-1) - $childt) / $opt_workers)+1;
+    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (((2**$opt_bits-1) - $childt) / $workerspace)+1;
     exit(0);
 
   } else {
@@ -303,14 +330,14 @@ while((scalar keys %children) > 0) {
   my $now = time;
   if(($opt_progressint > 0) && ($now >= $nextprogress)) {
     my $totali = 0;
-    for(my $i = 0; $i < $opt_workers; $i++) {
-      $totali += $totalis{$i} if($totalis{$i});
+    foreach my $i (@workers) {
+      $totali += $totalis{$i-1} if($totalis{$i-1});
     }
     my $elapsed = $now - $start;
-    my $percent = ($totali / (2**$opt_bits-1)) * 100;
+    my $percent = ($totali / ((2**$opt_bits-1) * ($realworkers / $workerspace))) * 100;
     my $remaining = 0;
     if($totali > 0) {
-      $remaining = ((2**$opt_bits-1) - $totali) / ($totali / $elapsed);
+      $remaining = (((2**$opt_bits-1) * ($realworkers / $workerspace) - $totali)) / ($totali / $elapsed);
       printf STDERR "%3d%% searched, ~%02d:%02d remaining...\n", $percent, ($remaining / 60), ($remaining % 60) unless $opt_quiet;
     } else {
       printf STDERR "%3d%% searched...\n", $percent unless $opt_quiet;
@@ -326,8 +353,8 @@ my $totaldelta = $end - $start;
 
 # Calculate final totals from the children.
 my $totali = 0;
-for(my $i = 0; $i < $opt_workers; $i++) {
-  $totali += $totalis{$i} if($totalis{$i});
+foreach my $i (@workers) {
+  $totali += $totalis{$i-1} if($totalis{$i-1});
 }
 
 printf STDERR "Search finished in %02d:%02d, %d match%s found in %d%% of a %d-bit space.\n",
@@ -351,7 +378,7 @@ sub parentsigint {
 }
 
 sub childsigint {
-  printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $opt_workers)+1;
+  printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
   exit(0);
 }
 
@@ -438,6 +465,19 @@ printing progress lines.
 
 The number of workers to be spawned.  Default is 1.  Recommended value 
 is the number of logical processors on the running system.
+
+This option can also be used to specify a "worker space", and then 
+specify which workers within that space to actually launch.  This way 
+the work can be split up among multiple vanityhash invocations on 
+different systems.  For example:
+
+    host1$ vanityhash -w 8:1,3,5,7 < inputfile
+    host2$ vanityhash -w 8:2,4,6,8 < inputfile
+
+This sets a worker space of 8 workers, but only launches workers 1, 3, 5 
+and 7 on host1, and 2, 4, 6 and 8 on host2.  To do this, the input data 
+must be on all hosts, and ideally the vanityhash version should be the 
+same as well.
 
 =item B<-d> I<digesttype>, B<--digest>=I<digesttype>
 
