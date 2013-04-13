@@ -256,7 +256,7 @@ foreach my $mychildt (@workers) {
         }
       }
     }
-    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, ((($childi-1) - $childt) / $workerspace)+1;
+    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $workerspace - $childt) / $workerspace)+1;
     exit(0);
 
   } else {
