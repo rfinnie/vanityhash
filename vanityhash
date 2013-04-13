@@ -160,7 +160,6 @@ if($opt_digesttype eq "md5") {
 }
 
 my $findlen = length($opt_find);
-my $every = 100000 * $workerspace;
 
 # Create the initial context, and populate with the input.  Note: 
 # calculating the hash is a destructive act, so any hash calculations 
@@ -198,7 +197,7 @@ my($iosel) = IO::Select->new();
 
 # These need to be global because of the child INT handler.
 # They are effectively per-child.
-my($childi, $childt);
+my($childi, $childt, $last_num);
 my($parentsock, $childsock);
 
 if($realworkers == $workerspace) {
@@ -233,19 +232,28 @@ foreach my $mychildt (@workers) {
     }
     @childsocks = ();
 
-    my $nextprogress = $childt + $every;
-    for($childi = $childt; $childi < (2**$opt_bits-1); $childi += $workerspace) {
-      if($childi >= $nextprogress) {
-        $nextprogress = $childi + $every;
-        printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
-      }
+    # Switching to integer mode for the rest of the block provides a 
+    # slight performance boost.
+    use integer;
 
-      # Add the test data and determine the hash.
-      my $testctx = $ctx->clone;
-      $testctx->add(pack($packtype, $childi));
-      my $testdigest = $testctx->hexdigest;
-      if((substr($testdigest, $opt_findpos, $findlen) eq $opt_find) || ($opt_anypos && (index($testdigest, $opt_find) > -1))) {
-        printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $testdigest, $childi;
+    # Occasionally report back to the parent process.
+    $SIG{ALRM} = \&childsigalrm;
+    alarm(2);
+
+    # Separate out the hash loops according to specified options, making 
+    # the actual loop as tight as possible.
+    $last_num = (2**$opt_bits-1);
+    if($opt_anypos) {
+      for($childi = $childt; $childi < $last_num; $childi += $workerspace) {
+        if(index($ctx->clone->add(pack($packtype, $childi))->hexdigest, $opt_find) != -1) {
+          printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $ctx->clone->add(pack($packtype, $childi))->hexdigest, $childi;
+        }
+      }
+    } else {
+      for($childi = $childt; $childi < $last_num; $childi += $workerspace) {
+        if(substr($ctx->clone->add(pack($packtype, $childi))->hexdigest, $opt_findpos, $findlen) eq $opt_find) {
+          printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $ctx->clone->add(pack($packtype, $childi))->hexdigest, $childi;
+        }
       }
     }
     printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (((2**$opt_bits-1) - $childt) / $workerspace)+1;
@@ -380,6 +388,11 @@ sub parentsigint {
 sub childsigint {
   printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
   exit(0);
+}
+
+sub childsigalrm {
+  printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
+  alarm(2);
 }
 
 ########################################
