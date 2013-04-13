@@ -256,7 +256,7 @@ foreach my $mychildt (@workers) {
         }
       }
     }
-    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (((2**$opt_bits-1) - $childt) / $workerspace)+1;
+    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, ((($childi-1) - $childt) / $workerspace)+1;
     exit(0);
 
   } else {
@@ -386,8 +386,8 @@ sub parentsigint {
 }
 
 sub childsigint {
-  printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
-  exit(0);
+  # Force the child to stop processing.
+  $last_num = 0;
 }
 
 sub childsigalrm {
