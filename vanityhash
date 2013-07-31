@@ -1,8 +1,8 @@
-#!/usr/bin/perl
+#!/usr/bin/python
 
 ########################################################################
 # vanityhash, a hex hash fragment creation tool
-# Copyright (C) 2010 Ryan Finnie <ryan@finnie.org>
+# Copyright (C) 2013 Ryan Finnie <ryan@finnie.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -11,7 +11,7 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
@@ -20,528 +20,623 @@
 # 02110-1301, USA.
 ########################################################################
 
-my $VERSION = '1.2';
-
-use strict;
-use warnings;
-use Digest;
-use Getopt::Long;
-use Pod::Usage;
-use Time::HiRes qw/time/;
-use Socket;
-use IO::Handle;
-use IO::Select;
-use POSIX ":sys_wait_h";
-
-my $opt_find;
-my $opt_bits = 24;
-my $opt_findpos = 0;
-my $opt_anypos;
-my $opt_progressint = 5;
-my $opt_workers = 1;
-my $opt_digesttype = "md5";
-my $opt_append;
-my $opt_quiet;
-my $opt_help;
-
-Getopt::Long::Configure("bundling");
-my($result) = GetOptions(
-  'bits|b=i' => \$opt_bits,
-  'position|p=i' => \$opt_findpos,
-  'any-position|y' => \$opt_anypos,
-  'progress|s=f' => \$opt_progressint,
-  'workers|w=s' => \$opt_workers,
-  'digest|d=s' => \$opt_digesttype,
-  'append|a' => \$opt_append,
-  'quiet|q' => \$opt_quiet,
-  'help|?' => \$opt_help,
-);
-
-if((scalar @ARGV == 0) || $opt_help) {
-  print STDERR "vanityhash version $VERSION\n";
-  print STDERR "Copyright (C) 2010 Ryan Finnie <ryan\@finnie.org>\n";
-  print STDERR "\n";
-  pod2usage(2);
-}
-
-$opt_find = $ARGV[0];
-unless($opt_find =~ /^[0-9A-Fa-f]+$/) {
-  die("Pattern must be specified as hex digits.\n");
-}
-
-if(($opt_bits < 1) || ($opt_bits > 64)) {
-  die("Search space must be between 1 and 64 bits, inclusive.\n");
-}
-
-my $packtype;
-if($opt_bits > 32) {
-  $packtype = 'Q';
-  eval {
-    my $testpack = pack($packtype, 0);
-  };
-  die("Search spaces greater than 32 bits are not supported on this platform.\n") if $@;
-} elsif($opt_bits > 16) {
-  $packtype = 'L';
-  eval {
-    my $testpack = pack($packtype, 0);
-  };
-  # Running this in real mode DOS, perhaps?
-  die("Search spaces greater than 16 bits are not supported on this platform.\n") if $@;
-} elsif($opt_bits > 8) {
-  $packtype = 'S';
-  eval {
-    my $testpack = pack($packtype, 0);
-  };
-  # Apple II?
-  die("Search spaces greater than 8 bits are not supported on this platform.\n") if $@;
-} else {
-  $packtype = 'C';
-}
-
-# Determine number of workers (and which ones to launch)
-my($realworkers, $workerspace, @workers);
-if($opt_workers =~ /^\d+$/) {
-  $workerspace = $opt_workers;
-  for(my $i = 1; $i <= $workerspace; $i++) {
-    push(@workers, $i);
-  }
-  $realworkers = $opt_workers;
-} elsif($opt_workers =~ /^(\d+):([\d,]+)$/) {
-  $workerspace = $1;
-  foreach my $i (keys %{{ map { $_ => 1 } split(/,/, $2) }}) {
-    if(($i < 1) || ($i > $workerspace)) {
-      die("Invalid use of --workers flag.\n");
-    }
-    push(@workers, $i);
-  }
-  @workers = sort {$a <=> $b} @workers;
-  $realworkers = scalar(@workers);
-} else {
-  die("Invalid use of --workers flag.\n");
-}
-
-# This is an arbitrary restriction to protect users from themselves and 
-# exhaust resources.  If you happen to have a system with more than 64 
-# hardware threads, manually disable this check.  Also, could I borrow 
-# the system?
-if(($realworkers < 1) || ($realworkers > 64)) {
-  die("Workers must be between 1 and 64, inclusive.\n");
-}
-
-if($opt_findpos < 0) {
-  die("Pattern position must be 0 or greater.\n");
-}
-
-# All digest operations are lowercase.
-$opt_find = lc($opt_find);
-
-# Allowed: md2 md4 md5 sha1alt sha* crc*
-my(@digestarray, $digestdisp);
-if($opt_digesttype eq "md5") {
-  $digestdisp = "MD5";
-  @digestarray = ("MD5");
-} elsif($opt_digesttype eq "md4") {
-  $digestdisp = "MD4";
-  @digestarray = ("MD4");
-} elsif($opt_digesttype eq "md2") {
-  $digestdisp = "MD2";
-  @digestarray = ("MD2");
-} elsif($opt_digesttype eq "sha1alt") {
-  $digestdisp = "SHA1";
-  @digestarray = ("SHA1");
-} elsif($opt_digesttype =~ /^sha(\d+)$/) {
-  $digestdisp = "SHA$1";
-  @digestarray = ("SHA", $1);
-} elsif($opt_digesttype =~ /^crc(.*?)$/) {
-  $digestdisp = uc("CRC$1");
-  @digestarray = ("CRC", (type => lc("crc$1")));
-} else {
-  die(sprintf("Unknown digest type: %s\n", $opt_digesttype));
-}
-
-my $findlen = length($opt_find);
-
-# Create the initial context, and populate with the input.  Note: 
-# calculating the hash is a destructive act, so any hash calculations 
-# must be done against a clone of this digest.
-my $ctx = Digest->new(@digestarray) || die "Cannot create digest context: $!";
-print STDERR "Reading input data and adding to digest..." unless $opt_quiet;
-my $datalen = 0;
-binmode(STDIN);
-while (<STDIN>) {
-  print $_ if($opt_append);
-  $datalen += length($_);
-  $ctx->add($_);
-}
-print STDERR "done.\n" unless $opt_quiet;
-
-my $origdigest = $ctx->clone->hexdigest;
-printf STDERR "Original data: %d bytes, %s %s\n", $datalen, $digestdisp, $origdigest unless $opt_quiet;
-
-# Figure out the maximum (character) length of the original hash, and 
-# make sure the user-supplied options aren't overrunning this.
-if($opt_findpos > (length($origdigest) - $findlen)) {
-  die(sprintf("Pattern position %d goes beyond end of %s digest, maximum supported is %d.\n", $opt_findpos, $digestdisp, (length($origdigest) - $findlen)));
-}
-
-if($opt_anypos) {
-  printf STDERR "Searching for %s at any position in a %d-bit space.\n", $opt_find, $opt_bits unless $opt_quiet;
-} else {
-  printf STDERR "Searching for %s at position %d in a %d-bit space.\n", $opt_find, $opt_findpos, $opt_bits unless $opt_quiet;
-}
-
-my(%children) = ();
-my(@childsocks) = ();
-my $start = time;
-my($iosel) = IO::Select->new();
-
-# These need to be global because of the child INT handler.
-# They are effectively per-child.
-my($childi, $childt, $last_num);
-my($parentsock, $childsock);
-
-if($realworkers == $workerspace) {
-  printf STDERR "Spawning %d worker%s... ", $realworkers, ($realworkers == 1 ? "" : "s") unless $opt_quiet;
-} else {
-  printf STDERR "Spawning %d of %d worker%s (%s)... ", $realworkers, $workerspace, ($realworkers == 1 ? "" : "s"), join(',', @workers) unless $opt_quiet;
-}
-foreach my $mychildt (@workers) {
-  $childt = $mychildt - 1;
-  $childsock = undef;
-  $parentsock = undef;
-  # Create a socket pair for parent/child communications.
-  socketpair($childsock, $parentsock, AF_UNIX, SOCK_STREAM, PF_UNSPEC) or die "socketpair: $!";
-  $childsock->autoflush(1);
-  $parentsock->autoflush(1);
-  push(@childsocks, $childsock);
-
-  my($pid);
-  if(!defined($pid = fork())) {
-    # Something bad happened.
-    die "Cannot fork worker $childt: $!";
-  } elsif($pid == 0) {
-    # THIS BLOCK RUNS THE FORKED CHILD PROCESS
-    # Set up a INT handler for premature termination.
-    $SIG{INT} = \&childsigint;
-
-    # Since multiple children are forked, @childsocks is filled up with 
-    # sockets of all previous child sockets.  Since we don't need any 
-    # of them (just a socket to the parent), close them all.
-    foreach my $csock (@childsocks) {
-      close($csock);
-    }
-    @childsocks = ();
-
-    # Switching to integer mode for the rest of the block provides a 
-    # slight performance boost.
-    use integer;
-
-    # Occasionally report back to the parent process.
-    $SIG{ALRM} = \&childsigalrm;
-    alarm(2);
-
-    # Separate out the hash loops according to specified options, making 
-    # the actual loop as tight as possible.
-    $last_num = (2**$opt_bits-1);
-    if($opt_anypos) {
-      for($childi = $childt; $childi < $last_num; $childi += $workerspace) {
-        if(index($ctx->clone->add(pack($packtype, $childi))->hexdigest, $opt_find) != -1) {
-          printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $ctx->clone->add(pack($packtype, $childi))->hexdigest, $childi;
-        }
-      }
-    } else {
-      for($childi = $childt; $childi < $last_num; $childi += $workerspace) {
-        if(substr($ctx->clone->add(pack($packtype, $childi))->hexdigest, $opt_findpos, $findlen) eq $opt_find) {
-          printf $parentsock "%d\t%d\tFOUND\t%s\t%d\n", $childt, $$, $ctx->clone->add(pack($packtype, $childi))->hexdigest, $childi;
-        }
-      }
-    }
-    printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $workerspace - $childt) / $workerspace)+1;
-    exit(0);
-
-  } else {
-    # THIS BLOCK IS A CONTINUATION OF THE MASTER PROCESS
-    # The parent doesn't need the parent portion of the socket.
-    close($parentsock);
-    # Add to IO::Select object for monitoring responses from children.
-    $iosel->add($childsock);
-    $children{$pid} = $childt;
-  }
-}
-print STDERR "done.\n" unless $opt_quiet;
-
-$SIG{INT} = \&parentsigint;
-
-my $printedappend = 0;
-my $matchesfound = 0;
-my $nextprogress = 0;
-if($opt_progressint > 0) {
-  $nextprogress = time + $opt_progressint;
-}
-
-# Total number of processed hashes from all children.
-my %totalis = ();
-
-while((scalar keys %children) > 0) {
-  # REAPER CODE
-
-  # Constantly loop until one of our children dies.
-  my($pid) = 0;
-  $pid = waitpid(-1, WNOHANG);
-  if($pid > 0) {
-    my($exitstatus) = $? >> 8;
-    my $t = $children{$pid};
-    delete($children{$pid});
-    unless($exitstatus == 0) {
-      die(sprintf("Worker %d died with exit status %d.\n", $t, $exitstatus));
-    }
-  }
-
-
-  my(@canread) = $iosel->can_read(($opt_progressint > 0) ? ($nextprogress - time) : 1);
-  foreach my $sock (@canread) {
-    # Read the message from the child.
-    my $in = <$sock>;
-    next unless $in;
-    chomp $in;
-    #printf STDERR "Received: %s\n", $in unless $opt_quiet;
-    my($msgt, $msgpid, $msgcmd, $msgrest) = split(/\t/, $in, 4);
-    if($msgcmd eq "PROGRESS") {
-      # Progress indicator
-      my $processed = $msgrest;
-      $totalis{$msgt} = $processed;
-    } elsif($msgcmd eq "FOUND") {
-      # Match found
-      my($msgdigest, $msgdata) = split(/\t/, $msgrest, 2);
-      $msgdata = pack($packtype, $msgdata);
-      printf STDERR "Match found: 0x%*v02x -> %s %s\n", '', $msgdata, $digestdisp, $msgdigest unless $opt_quiet;
-      $matchesfound++;
-      if($opt_append) {
-        # It's possible children may send back positive matches by the time
-        # we're done killing them, but we only want to output a positive
-        # match once while in append mode.
-        if(!$printedappend) {
-          # Output the binary data, appending to the end of the original.
-          print $msgdata;
-          $printedappend = 1;
-          # We won't need the workers anymore.
-          kill(POSIX::SIGINT(), keys %children);
-        }
-      } else {
-        # Print a machine readable match line.
-        printf "%*v02x %s\n", '', $msgdata, $msgdigest;
-      }
-    }
-  }
-
-  # Occasionally print a human-readable status line.
-  my $now = time;
-  if(($opt_progressint > 0) && ($now >= $nextprogress)) {
-    my $totali = 0;
-    foreach my $i (@workers) {
-      $totali += $totalis{$i-1} if($totalis{$i-1});
-    }
-    my $elapsed = $now - $start;
-    my $percent = ($totali / ((2**$opt_bits-1) * ($realworkers / $workerspace))) * 100;
-    my $remaining = 0;
-    if($totali > 0) {
-      $remaining = (((2**$opt_bits-1) * ($realworkers / $workerspace) - $totali)) / ($totali / $elapsed);
-      printf STDERR "%3d%% searched, ~%02d:%02d remaining...\n", $percent, ($remaining / 60), ($remaining % 60) unless $opt_quiet;
-    } else {
-      printf STDERR "%3d%% searched...\n", $percent unless $opt_quiet;
-    }
-    $nextprogress = $now + $opt_progressint;
-  }
-
-}
-
-# We're done with a full space search!
-my $end = time;
-my $totaldelta = $end - $start;
-
-# Calculate final totals from the children.
-my $totali = 0;
-foreach my $i (@workers) {
-  $totali += $totalis{$i-1} if($totalis{$i-1});
-}
-
-printf STDERR "Search finished in %02d:%02d, %d match%s found in %d%% of a %d-bit space.\n",
-  ($totaldelta / 60),
-  ($totaldelta % 60),
-  $matchesfound,
-  ($matchesfound == 1 ? "" : "es"),
-  ($totali / (2**$opt_bits-1) * 100),
-  $opt_bits
-unless $opt_quiet;
-
-exit(0);
-
-########################################
-# Subs
-########################################
-
-sub parentsigint {
-  print STDERR "User interrupt, cleaning up.\n" unless $opt_quiet;
-  kill(POSIX::SIGINT(), keys %children);
-}
-
-sub childsigint {
-  # Force the child to stop processing.
-  $last_num = 0;
-}
-
-sub childsigalrm {
-  printf $parentsock "%d\t%d\tPROGRESS\t%d\n", $childt, $$, (($childi - $childt) / $workerspace)+1;
-  alarm(2);
-}
-
-########################################
-# Manpage
-########################################
-
-=head1 NAME
-
-vanityhash - A hex hash fragment creation tool
-
-=head1 SYNOPSIS
-
-B<vanityhash> S<[ B<options> ]> hexfragment < inputfile
-
-B<vanityhash> B<--append> S<[ B<options> ]> hexfragment < inputfile > outputfile
-
-=head1 DESCRIPTION
-
-B<vanityhash> is a tool that can discover data to be added to the end 
-of a file to produce a desired hex hash fragment.  It searches a 
-message space and runs a hashing algorithm against the original data 
-plus the appended data to determine if the desired hash fragment is 
-present.  vanityhash can run multiple parallel workers to effectively 
-make use of multiple processors/cores/threads, and supports multiple 
-hash digest types (MD5, SHA1, SHA256, etc).
-
-vanityhash can be used to append data to files that are capable of 
-ignoring garbage data at the end of the file (such as ISO images and 
-some types of graphic images), in order to produce a "vanity" hash.  
-vanityhash is fast, as it only reads the base input data once, and then 
-reverts back to that base state over and over while it permeates the 
-search space, rather than hashing the entire source during each 
-permeation.
-
-vanityhash operates on the concept of a "search space".  For example, 
-given a 24-bit search space, vanityhash will run from 0x00000000 to 
-0x00ffffff, append the 4-byte packed version of each number to the end 
-of the input data, calculate the resulting hash, and search the hash 
-value for the desired hex fragment pattern.  A desired hex fragment can 
-be larger than the search space (for example, searching for "abcdef" in 
-a 16-bit search space), but the chances of finding a match reduce 
-drastically the larger the desired hex fragment is.
-
-In its default operation, vanityhash will search the entire specified 
-search space and output all matching results to STDOUT, one result per 
-line, in the form "extradata hash", where both "extradata" and "hash" 
-are in hex form.  When the B<--append> option is specified, this 
-behavior changes.  If a match is found, the original input data plus 
-the extra data (in byte form) are outputted, and searching ends after 
-the first successful match.  If no matches are found, the original data 
-only is outputted.
-
-=head1 OPTIONS
-
-=over
-
-=item B<-b> I<bits>, B<--bits>=I<bits>
-
-Space to be searched, in bits.  Allowed values range from 1 to 64.  
-Default is 24.  Search spaces larger than 32 bits require a 64-bit 
-operating system, and a version of Perl compiled with 64-bit integer 
-support.
-
-=item B<-p> I<position>, B<--position>=I<position>
-
-The position within the hex hash to look for the desired fragment, in 
-hex digits.  The beginning starts at 0.  Default is 0.  A position that 
-extends the fragment beyond the length of the hash is not allowed.
-
-=item B<-y>, B<--any-position>
-
-When enabled, this option will override B<--position> and will return 
-hashes that contain the desired fragment in any position within the 
-hash.
-
-=item B<-s> I<seconds>, B<--progress>=I<seconds>
-
-The number of seconds between printing of progress lines, default 5 
-seconds.  A decimal value may be specified.  A value of 0 disabled 
-printing progress lines.
-
-=item B<-w> I<workers>, B<--workers>=I<workers>
-
-The number of workers to be spawned.  Default is 1.  Recommended value 
-is the number of logical processors on the running system.
-
-This option can also be used to specify a "worker space", and then 
-specify which workers within that space to actually launch.  This way 
-the work can be split up among multiple vanityhash invocations on 
-different systems.  For example:
-
-    host1$ vanityhash -w 8:1,3,5,7 < inputfile
-    host2$ vanityhash -w 8:2,4,6,8 < inputfile
-
-This sets a worker space of 8 workers, but only launches workers 1, 3, 5 
-and 7 on host1, and 2, 4, 6 and 8 on host2.  To do this, the input data 
-must be on all hosts, and ideally the vanityhash version should be the 
-same as well.
-
-=item B<-d> I<digesttype>, B<--digest>=I<digesttype>
-
-The hashing digest type to use.  Default is "md5" Allowed values are 
-"md2", "md4", "md5", and "shaI<N>" where I<N> is a valid SHA digest 
-value.  "sha1alt" is accepted to use Digest::SHA1 instead of 
-Digest::SHA.  Note that for many digest types, the appropriate Perl 
-module must be installed and available.
-
-=item B<-a>, B<--append>
-
-When enabled, the original data is outputted back to STDOUT.  Then, 
-when/if the first matching hash is found, the data fragment used to 
-produce the matching hash is outputted to STDOUT.  STDOUT can then be 
-redirected to another file to produce the modified file.
-
-=item B<-q>, B<--quiet>
-
-Normally vanityhash sends a fair amount of status information to STDERR 
-during operation.  When enabled, all non-error status information is 
-instead suppressed.
-
-=item B<-?>, B<--help>
-
-Print a synposis and exit.
-
-=back
-
-=head1 BUGS / LIMITATIONS
-
-Search spaces larger than 32 bits require a 64-bit operating system, 
-and a version of Perl compiled with 64-bit integer support.
-
-A block of computed data is added equal to the size of the integer type 
-the search space fits into (1 byte for 8 bits or less, 2 bytes for 9 
-through 16 bits, 4 bytes for 17 through 32 bits, 8 bytes for 33 through 
-64 bits), even if the search space could fit into a smaller raw byte 
-block (say, 3 bytes for a 20-bit search space).  While this does not 
-reduce (or increase) the possibility of finding a match in a given 
-search space, the extra null byte(s) in the block are technically 
-wasteful.
-
-Extra bytes are packed according to system endianness.  Thus, search 
-results will be different between big and little endian systems.
-
-vanityhash should work fine on any POSIX operating system, and has been 
-tested on Linux and Mac OS X.  It mostly works with Strawberry Perl for 
-Windows, but crashes at the end.  Suggestions to fix this would be 
-welcomed.
-
-=head1 CREDITS
-
-B<vanityhash> was written by Ryan Finnie <ryan@finnie.org>.  vanityhash 
-was inspired by Seth David Schoen's 2003 program, hash_search.
+# Yay Python 3
+from __future__ import print_function
+from __future__ import unicode_literals
+from __future__ import division
+import sys
+import hashlib
+import struct
+import multiprocessing
+import time
+import getopt
+import select
+import codecs
+import zlib
+import copy
+
+
+class VanityHash:
+    """VanityHash class.
+
+    Child subprocesses will have access to the instance of this class,
+    forked from the master.
+    """
+    version = '2.0'
+
+    # Whether stdin/stdout are binary (via the buffer interface).  This
+    # is needed for compatibility with Python 2.6, 2.7 and 3.
+    std_bin = False
+    stdin = None
+    stdout = None
+    # VanityHashPoll object
+    poll = None
+    # hashlib context
+    ctx = None
+    # Dict of children's info
+    children = {}
+    # Total number of hashes searched, across all children
+    total_searched = 0
+    # Total number of hashes found, across all children
+    total_found = 0
+    # In append mode, whether the binary result has been printed yet
+    printed_append = False
+    # Epoch start time
+    start_time = None
+    # Next epoch time to display the progress
+    next_progress_time = None
+    # Number of real workers to be used
+    workers_real = 0
+    # List of zero-indexed workers to be used
+    workers_real_l = []
+    # Total workers in the worker set
+    workers_total = 0
+    # Proporition of real to total workers
+    workers_real_fraction = 0.0
+    # Pack type of hash candidates
+    pack_type = b'=L'
+
+    # Whether to display human-readable information to stderr
+    opt_quiet = False
+    # Search space, in bits
+    opt_bits = 24
+    # Total size containing the search space, in bits
+    opt_bits_pack = 0
+    # Endianness of the built container
+    opt_byte_order = 'native'
+    # Worker specification provided by the user
+    opt_workers_s = 'guess'
+    # Hash digest type
+    opt_digest_type = 'md5'
+    # How often to display progress information
+    opt_progress_interval = 5.0
+    # Whether to output the original data + the first result
+    opt_append = False
+    # Zero-indexed position within the hash to search
+    opt_find_pos = 0
+    # Whether to find the desired fragment anywhere in the hash
+    opt_find_any_pos = False
+    # Where to add a zeroed pack in append mode, if no match is found
+    opt_append_empty = False
+
+    def __init__(self):
+        """Initialize the class."""
+        # Make stdin/stdout binary, if possible.
+        if hasattr(sys.stdin, 'buffer'):
+            self.std_bin = True
+            self.stdin = sys.stdin.buffer
+            self.stdout = sys.stdout.buffer
+        else:
+            self.std_bin = False
+            self.stdin = sys.stdin
+            self.stdout = sys.stdout
+
+        # Parse getopts.
+        try:
+            self.parse_options()
+        except RuntimeError as e:
+            self.usage()
+            self.log('Error: %s' % e)
+            sys.exit(2)
+
+    def main(self):
+        """Main program loop."""
+        # Read stdin data.
+        self.read_data()
+
+        if self.opt_find_any_pos:
+            self.log('Searching for %s at any position in a %d-bit space.' % (
+                self.opt_find, self.opt_bits
+            ))
+        else:
+            self.log('Searching for %s at position %d in a %d-bit space.' % (
+                self.opt_find, self.opt_find_pos, self.opt_bits
+            ))
+
+        self.start_time = time.time()
+
+        if self.workers_total == self.workers_real:
+            self.log('Spawning %d worker%s...' % (
+                self.workers_real, ((self.workers_real != 1) and 's' or '')
+            ), newline=False)
+        else:
+            self.log('Spawning %d of %d worker%s (%s)...' % (
+                self.workers_real, self.workers_total, ((self.workers_total != 1) and 's' or ''),
+                (','.join(str(x + 1) for x in self.workers_real_l))
+            ), newline=False)
+
+        # Spawn worker children.
+        self.poll = VanityHashPoller()
+        for i in self.workers_real_l:
+            parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+            p = multiprocessing.Process(target=self.worker, args=(i, child_conn))
+            p.name = 'Worker %d' % (i + 1)
+            p.start()
+            child_conn.close()
+            self.poll.register(parent_conn)
+            self.children[i] = {
+                'process': p,
+                'pipe': parent_conn,
+            }
+
+        self.log('done.')
+
+        # Loop through messages from children, occasionally reporting
+        # hashing progress.
+        while True:
+            try:
+                self.query_children()
+                self.report_progress()
+            except KeyboardInterrupt:
+                self.kill_children()
+
+            if len(self.children) == 0:
+                break
+
+        if self.opt_append and self.opt_append_empty and not self.printed_append:
+            self.stdout.write(b'\x00' * int(self.opt_bits_pack / 8))
+            self.stdout.flush()
+            self.printed_append = True
+
+        # Final statistics.
+        delta_time = time.time() - self.start_time
+        self.log('Search finished in %02d:%02d, %d match%s found in %d%% of a %d-bit space.' % (
+            (delta_time / 60), (delta_time % 60), self.total_found,
+            ((self.total_found != 1) and 'es' or ''),
+            ((self.total_searched - 1) / self.space_max * 100), self.opt_bits
+        ))
+
+    def worker(self, num_begin, conn):
+        """Process hash instructions in a subprocess.
+
+        Note that the state of the class instance is the state at the
+        time of the fork from the parent process.  Communication back to
+        the parent is done by the conn socket.
+        """
+        # Close other worker fds.  We don't need them.
+        for childid in list(self.children):
+            childdata = self.children[childid]
+            childdata['pipe'].close()
+            del(self.children[childid])
+
+        to_find = self.opt_find
+        to_find_len = len(to_find)
+        find_pos = self.opt_find_pos
+        find_anypos = self.opt_find_any_pos
+        find_pos_end = find_pos + to_find_len
+
+        # Start out with a group of 10,000 hashes.  This will be revised
+        # to be approximately 2 seconds worth of hashes.
+        last_report = time.time()
+        report_i = 10000
+        i = num_begin
+
+        while i <= self.space_max:
+            # Take into account multiple workers when determining when
+            # to end the group.
+            group_num_end = i + (report_i * self.workers_total)
+            if group_num_end > self.space_max:
+                group_num_end = self.space_max
+            group_i_begin = i
+
+            # The actual hash->test loop is as tight as possible, and
+            # hence is duplicated a bit.
+            if find_anypos:
+                while i <= group_num_end:
+                    ctxcopy = self.ctx.copy()
+                    ctxcopy.update(struct.pack(self.pack_type, i))
+                    hexdigest = ctxcopy.hexdigest()
+                    if hexdigest.find(to_find) > -1:
+                        conn.send(('FOUND', (hexdigest, i)))
+                    i += self.workers_total
+            else:
+                while i <= group_num_end:
+                    ctxcopy = self.ctx.copy()
+                    ctxcopy.update(struct.pack(self.pack_type, i))
+                    hexdigest = ctxcopy.hexdigest()
+                    if hexdigest[find_pos:find_pos_end] == to_find:
+                        conn.send(('FOUND', (hexdigest, i)))
+                    i += self.workers_total
+
+            # Figure out how many hashes were performed, and update the
+            # parent.
+            report_i = (i - group_i_begin) / self.workers_total
+            conn.send(('PROGRESS', report_i))
+
+            # Figure out how many hashes are needed to run for the next
+            # ~2 seconds.
+            now = time.time()
+            next_report_i = int(2 * (report_i / (now - last_report)))
+            last_report = now
+            report_i = next_report_i
+
+        conn.send(('DONE', ()))
+        time.sleep(10)
+
+    def bytes_to_hex(self, b):
+        """Return a hex representation of binary byte data."""
+        return codecs.encode(b, 'hex_codec').decode('ascii')
+
+    def parse_options(self):
+        """Parse and validate command-line options."""
+        try:
+            opts, args = getopt.getopt(sys.argv[1:], '?b:w:d:s:at:yqp:n:e', [
+                'help', 'bits=', 'workers=', 'digest=', 'progress=', 'append',
+                'bits-pack=', 'any-position', 'quiet', 'position=',
+                'byte-order=', 'append-empty'
+            ])
+        except getopt.GetoptError as err:
+            raise RuntimeError(str(err))
+        for o, a in opts:
+            if o in ('?', '--help'):
+                self.usage()
+                sys.exit(2)
+            elif o in ('-b', '--bits'):
+                self.opt_bits = int(a)
+                if (self.opt_bits < 1) or (self.opt_bits > 64):
+                    raise RuntimeError('Search space must be 64 bits or less')
+            elif o in ('-t', '--bits-pack'):
+                self.opt_bits_pack = int(a)
+            elif o in ('-w', '--workers'):
+                self.opt_workers_s = a
+            elif o in ('-d', '--digest'):
+                if a == 'sha1alt':
+                    a = 'sha1'
+                self.opt_digest_type = a
+            elif o in ('-s', '--progress'):
+                self.opt_progress_interval = float(a)
+            elif o in ('-a', '--append'):
+                self.opt_append = True
+            elif o in ('-p', '--position'):
+                self.opt_find_pos = int(a)
+            elif o in ('-y', '--any-position'):
+                self.opt_find_any_pos = True
+            elif o in ('-q', '--quiet'):
+                self.opt_quiet = True
+            elif o in ('-n', '--byte-order'):
+                if a in ('native', 'little', 'big'):
+                    self.opt_byte_order = a
+                else:
+                    raise RuntimeError('Invalid byte order, must be one of: %s' % str(('native', 'little', 'big')))
+            elif o in ('-e', '--append-empty'):
+                self.opt_append_empty = True
+            else:
+                assert False, 'unhandled option %s' % o
+
+        if len(args) < 1:
+            self.usage()
+            sys.exit(2)
+        self.opt_find = args[0].lower()
+
+        # Generate the container size if not specified.
+        if self.opt_bits_pack == 0:
+            self.opt_bits_pack = 1
+            while self.opt_bits_pack < self.opt_bits:
+                self.opt_bits_pack *= 2
+            if self.opt_bits_pack < 8:
+                self.opt_bits_pack = 8
+        # Validate the container size.
+        if (self.opt_bits_pack < self.opt_bits) or (self.opt_bits_pack > 64):
+            raise RuntimeError('Invalid bits-pack')
+        # Make sure the container size is a power of 2.
+        bits_pack_bytes = int(self.opt_bits_pack / 8)
+        if not (bits_pack_bytes & (bits_pack_bytes - 1)) == 0:
+            raise RuntimeError('Invalid bits-pack')
+
+        # Validate the desired hex fragment
+        for i in self.opt_find:
+            if not i in '0 1 2 3 4 5 6 7 8 9 a b c d e f'.split():
+                raise RuntimeError('Invalid search hex string')
+
+        # Pre-compute the largest integer to be tested.
+        self.space_max = 0
+        for i in range(0, self.opt_bits):
+            self.space_max += 2 ** i
+
+        # Build a pack type based on the bits_pack size.
+        if self.opt_byte_order == 'little':
+            self.pack_type = b'<'
+        elif self.opt_byte_order == 'big':
+            self.pack_type = b'>'
+        else:
+            self.pack_type = b'='
+        if self.opt_bits_pack == 64:
+            self.pack_type += b'Q'
+        elif self.opt_bits_pack == 32:
+            self.pack_type += b'L'
+        elif self.opt_bits_pack == 16:
+            self.pack_type += b'H'
+        else:
+            self.pack_type += b'B'
+
+        # Build the worker options.
+        if self.opt_workers_s == 'guess':
+            try:
+                self.opt_workers_s = str(multiprocessing.cpu_count())
+            except NotImplementedError:
+                self.opt_workers_s = str(1)
+        if self.opt_workers_s.isdigit():
+            # If a single number is given, the real and total workers
+            # are the same.
+            self.workers_total = int(self.opt_workers_s)
+            self.workers_real_l = range(self.workers_total)
+        else:
+            # If a specification is given, validate and build according
+            # to the specification.
+            try:
+                (workert, workerx) = self.opt_workers_s.split(':')
+            except ValueError:
+                raise RuntimeError('Invalid worker specification')
+            self.workers_total = int(workert)
+            for i in workerx.split(','):
+                if not i.isdigit():
+                    raise RuntimeError('Invalid worker specification')
+                i = int(i)
+                if (i > self.workers_total) or (i < 1):
+                    raise RuntimeError('Invalid worker specification')
+                if not (i - 1) in self.workers_real_l:
+                    self.workers_real_l.append(i - 1)
+                self.workers_real_l.sort()
+        self.workers_real = len(self.workers_real_l)
+        if (self.workers_total < 1) or (self.workers_real < 1):
+            raise RuntimeError('Invalid number of workers')
+        if self.workers_real > 128:
+            raise RuntimeError('Cannot be more than 128 workers')
+        self.workers_real_fraction = self.workers_real / self.workers_total
+
+        # Test the hash type is valid.
+        try:
+            testctx = ExtendedHashlib().new(self.opt_digest_type)
+        except ValueError:
+            raise RuntimeError('Invalid digest type')
+
+        # Test the position specified is correct according to the given
+        # hash type.
+        hexdigestsize = testctx.digest_size * 2
+        maxpos = hexdigestsize - len(self.opt_find)
+        if self.opt_find_pos < 0:
+            self.opt_find_pos += hexdigestsize
+        if self.opt_find_pos > maxpos:
+            raise RuntimeError('Pattern position %d goes beyond end of %s digest' % (
+                self.opt_find_pos, self.opt_digest_type.upper())
+            )
+
+    def log(self, text='', newline=True):
+        """Write text to stderr."""
+        if self.opt_quiet:
+            return
+        if newline:
+            print(text, file=sys.stderr)
+        else:
+            print(text, file=sys.stderr, end='')
+
+    def query_children(self):
+        """Check the poll object for available children messages."""
+        available_fds = self.poll.poll(1000)
+        for childid in list(self.children):
+            # The child may be killed during the loop
+            if not childid in self.children:
+                continue
+            childdata = self.children[childid]
+            p = childdata['process']
+            if childdata['pipe'].fileno() in available_fds:
+                msg = childdata['pipe'].recv()
+                self.process_message(childid, msg)
+            if not p.is_alive():
+                if not p.exitcode == 0:
+                    self.log('Worker %d (pid %d) died with exit status %d' % (childid + 1, p.pid, p.exitcode))
+                self.poll.unregister(childdata['pipe'])
+                childdata['pipe'].close()
+                del(self.children[childid])
+
+    def process_message(self, childid, msg):
+        """Parse a received child message."""
+        if msg[0] == 'PROGRESS':
+            self.total_searched += msg[1]
+        elif msg[0] == 'DONE':
+            self.kill_children([childid])
+        elif msg[0] == 'FOUND':
+            (msgdigest, msgdata) = msg[1]
+            msgdata = struct.pack(self.pack_type, msgdata)
+            self.log('Match found: 0x%s -> %s %s' % (
+                self.bytes_to_hex(msgdata), self.opt_digest_type.upper(), msgdigest)
+            )
+            self.total_found += 1
+            if self.opt_append:
+                if not self.printed_append:
+                    self.stdout.write(msgdata)
+                    self.stdout.flush()
+                    self.printed_append = True
+                    self.kill_children()
+            else:
+                if self.std_bin:
+                    self.stdout.write(bytearray('%s %s\n' % (self.bytes_to_hex(msgdata), msgdigest), 'ascii'))
+                else:
+                    self.stdout.write('%s %s\n' % (self.bytes_to_hex(msgdata), msgdigest))
+                self.stdout.flush()
+
+    def read_data(self):
+        """Read data from stdin and build the initial hash context."""
+        self.ctx = ExtendedHashlib().new(self.opt_digest_type)
+        self.log('Reading input data and adding to digest...', newline=False)
+        datalen = 0
+        while True:
+            buf = self.stdin.read(1024)
+            if not buf:
+                break
+            if self.opt_append:
+                self.stdout.write(buf)
+            datalen += len(buf)
+            self.ctx.update(buf)
+        if self.opt_append:
+            self.stdout.flush()
+        self.log('done.')
+
+        origdigest = self.ctx.copy().hexdigest()
+        self.log('Original data: %d bytes, %s %s' % (datalen, self.opt_digest_type.upper(), origdigest))
+
+    def report_progress(self):
+        """Occasionally output progress statistics."""
+        if not self.next_progress_time:
+            self.next_progress_time = self.start_time + self.opt_progress_interval
+
+        now = time.time()
+        if not now > self.next_progress_time:
+            return
+        elapsed = now - self.start_time
+        percent = self.total_searched / (self.space_max * self.workers_real_fraction) * 100
+        if self.total_searched > 0:
+            remaining = (
+                (self.space_max * self.workers_real_fraction - self.total_searched) / (self.total_searched / elapsed)
+            )
+            self.log('%3d%% searched, ~%02d:%02d remaining...' % (
+                percent, (remaining / 60), (remaining % 60))
+            )
+        else:
+            self.log('%3d%% searched...' % percent)
+        self.next_progress_time = now + self.opt_progress_interval
+
+    def kill_children(self, childids=None):
+        """Kill all child subprocesses."""
+        if not childids:
+            childids = list(self.children)
+        for childid in childids:
+            childdata = self.children[childid]
+            childdata['process'].terminate()
+            self.poll.unregister(childdata['pipe'])
+            childdata['pipe'].close()
+            del(self.children[childid])
+
+    def usage(self):
+        """Output usage information."""
+        self.log('vanityhash version %s' % self.version)
+        self.log('Copyright (C) 2013 Ryan Finnie <ryan@finnie.org>')
+        self.log()
+        self.log('Usage:')
+        self.log()
+        self.log('    vanityhash [ options ] hexfragment < inputfile')
+        self.log('    vanityhash --append [ options ] hexfragment < inputfile > outputfile')
+        self.log()
+
+
+class VanityHashPoller:
+    """VanityHashPoller class.
+
+    This class emulates the basic functionality of select.poll(), but
+    will fall back to manually tracking polling on operating systems
+    where select.poll() is not available.
+
+    Note that this is not a drop-in replacement for select.poll().  For
+    example, register/unregister take filehandles, not file descriptors,
+    but they return file descriptors.
+    """
+    objs = []
+    selectpoll = None
+
+    def __init__(self):
+        """Initialize and test for select.poll()."""
+        if hasattr(select, 'poll'):
+            self.selectpoll = select.poll()
+        else:
+            self.selectpoll = None
+
+    def register(self, obj):
+        """Register a filehandle."""
+        assert obj not in self.objs
+        self.objs.append(obj)
+        if self.selectpoll:
+            self.selectpoll.register(obj.fileno(), select.POLLIN)
+
+    def unregister(self, obj):
+        """Unregister a filehandle."""
+        assert obj in self.objs
+        self.objs.remove(obj)
+        if self.selectpoll:
+            self.selectpoll.unregister(obj.fileno())
+
+    def poll(self, timeout=None):
+        """Poll the registered filehandles.
+
+        If timeout is None (default), the method will block until there
+        are file descriptors to return.
+        """
+        if self.selectpoll:
+            pollres = self.selectpoll.poll(timeout)
+            if not pollres:
+                return []
+            available_fds = []
+            for (fd, event) in pollres:
+                if not event == select.POLLIN:
+                    continue
+                available_fds.append(fd)
+            return available_fds
+        else:
+            while True:
+                available_fds = []
+                for obj in self.objs:
+                    if obj.closed:
+                        continue
+                    if obj.poll():
+                        available_fds.append(obj.fileno())
+                if len(available_fds) > 0:
+                    return available_fds
+                else:
+                    if timeout is None:
+                        time.sleep(1)
+                    else:
+                        time.sleep(float(timeout) / 1000)
+                        return []
+
+
+class HashlibCRC32:
+    """hashlib-compatible CRC32."""
+    _crc = 0
+    name = 'crc32'
+    digestsize = 4
+    digest_size = 4
+    block_size = 1
+
+    def copy(self):
+        return copy.copy(self)
+
+    def update(self, data):
+        self._crc = zlib.crc32(data, self._crc)
+
+    def digest(self):
+        return struct.pack(b'>I', (self._crc & 0xffffffff))
+
+    def hexdigest(self):
+        return codecs.encode(self.digest(), 'hex_codec')
+
+
+class ExtendedHashlib:
+    """hashlib-compatible extension system."""
+    extended_algorithms = {'crc32': HashlibCRC32}
+
+    def __init__(self):
+        if hasattr(hashlib, 'algorithms'):
+            self.algorithms = (
+                hashlib.algorithms +
+                tuple(self.extended_algorithms.keys()))
+            self._hashlib_algorithms = hashlib.algorithms
+            for algo in hashlib.algorithms:
+                vars(self)[algo] = getattr(hashlib, algo)
+        elif hasattr(hashlib, 'algorithms_available'):
+            self.algorithms_available = set(
+                tuple(hashlib.algorithms_available) +
+                tuple(self.extended_algorithms.keys()))
+            self._hashlib_algorithms = hashlib.algorithms_available
+            self.algorithms_guaranteed = hashlib.algorithms_guaranteed
+            for algo in hashlib.algorithms_guaranteed:
+                vars(self)[algo] = getattr(hashlib, algo)
+
+    def new(self, algo):
+        if algo in self.extended_algorithms:
+            return self.extended_algorithms[algo]()
+        else:
+            return hashlib.new(algo)
+
+
+if __name__ == '__main__':
+    vh = VanityHash()
+    vh.main()
