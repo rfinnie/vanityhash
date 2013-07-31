@@ -34,6 +34,7 @@ import select
 import codecs
 import zlib
 import copy
+import random
 
 
 class VanityHash:
@@ -608,6 +609,7 @@ class HashlibCRC32:
     def hexdigest(self):
         return codecs.encode(self.digest(), 'hex_codec')
 
+
 class HashlibAdler32:
     """hashlib-compatible Adler-32."""
     _checksum = 1
@@ -629,9 +631,37 @@ class HashlibAdler32:
         return codecs.encode(self.digest(), 'hex_codec')
 
 
+class HashlibRandom:
+    """hashlib-compatible dummy random module."""
+    _checksum = 0
+    name = 'random'
+    digestsize = 32
+    digest_size = 32
+    block_size = 64
+
+    def __init__(self, digest_size=32, block_size=64):
+        self.digestsize = digest_size
+        self.digest_size = digest_size
+        self.block_size = block_size
+        self.update('')
+
+    def copy(self):
+        return copy.copy(self)
+
+    def update(self, data):
+        self._checksum = bytearray([random.randint(0, 255) for x in range(self.digest_size)])
+
+    def digest(self):
+        return bytes(self._checksum)
+
+    def hexdigest(self):
+        return codecs.encode(self.digest(), 'hex_codec')
+
+
 class ExtendedHashlib:
     """hashlib-compatible extension system."""
     extended_algorithms = {
+        'random': HashlibRandom,
         'crc32': HashlibCRC32,
         'adler32': HashlibAdler32
     }
@@ -653,11 +683,11 @@ class ExtendedHashlib:
             for algo in hashlib.algorithms_guaranteed:
                 vars(self)[algo] = getattr(hashlib, algo)
 
-    def new(self, algo):
+    def new(self, algo, **kwargs):
         if algo in self.extended_algorithms:
-            return self.extended_algorithms[algo]()
+            return self.extended_algorithms[algo](**kwargs)
         else:
-            return hashlib.new(algo)
+            return hashlib.new(algo, **kwargs)
 
 
 if __name__ == '__main__':
