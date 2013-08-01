@@ -20,7 +20,8 @@ All modules used by vanityhash are part of the core Python distribution.
 Digest support depends on the OpenSSL features used to compile hashlib.  
 All OpenSSL implementations should support 'md5', 'sha1', 'sha224', 
 'sha256', 'sha384' and 'sha512'.  Additionally, it may support digests 
-such as 'md4'.  Built-in implementations include 'crc32' and 'adler32'.
+such as 'md4'.  Built-in implementations include 'random', 'crc32' and 
+'adler32'.
 
 To "build" and install vanityhash:
 
