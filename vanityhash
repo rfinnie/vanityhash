@@ -542,25 +542,17 @@ class ExtendedHashlib:
     extended_algorithms = {
         'random': HashlibRandom,
         'crc32': HashlibCRC32,
-        'adler32': HashlibAdler32
+        'adler32': HashlibAdler32,
     }
 
     def __init__(self):
-        if hasattr(hashlib, 'algorithms'):
-            self.algorithms = (
-                hashlib.algorithms +
-                tuple(self.extended_algorithms.keys()))
-            self._hashlib_algorithms = hashlib.algorithms
-            for algo in hashlib.algorithms:
-                vars(self)[algo] = getattr(hashlib, algo)
-        elif hasattr(hashlib, 'algorithms_available'):
-            self.algorithms_available = set(
-                tuple(hashlib.algorithms_available) +
-                tuple(self.extended_algorithms.keys()))
-            self._hashlib_algorithms = hashlib.algorithms_available
-            self.algorithms_guaranteed = hashlib.algorithms_guaranteed
-            for algo in hashlib.algorithms_guaranteed:
-                vars(self)[algo] = getattr(hashlib, algo)
+        self.algorithms_available = set(
+            tuple(hashlib.algorithms_available) +
+            tuple(self.extended_algorithms.keys()))
+        self._hashlib_algorithms = hashlib.algorithms_available
+        self.algorithms_guaranteed = hashlib.algorithms_guaranteed
+        for algo in hashlib.algorithms_guaranteed:
+            vars(self)[algo] = getattr(hashlib, algo)
 
     def new(self, algo, **kwargs):
         if algo in self.extended_algorithms:
