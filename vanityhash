@@ -89,15 +89,18 @@ class VanityHash:
     workers_real_fraction = 0.0
     # Pack type of hash candidates
     pack_type = b'=L'
-    # Dict of options for digest() / hexdigest()
-    digest_opts = None
+    # Dict of args for digest() / hexdigest()
+    digest_args = None
+    # Dict of kwargs for digest() / hexdigest()
+    digest_kwargs = None
 
     # Argparse object
     args = None
 
     def __init__(self):
         self.workers_real_l = []
-        self.digest_opts = {}
+        self.digest_args = []
+        self.digest_kwargs = {}
 
     def main(self):
         """Main program loop."""
@@ -236,7 +239,7 @@ class VanityHash:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest(**self.digest_opts)
+                    hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
                     if hexdigest.find(to_find) > -1:
                         self.queue.put(('FOUND', (hexdigest, i)))
                     i += self.workers_total
@@ -244,7 +247,7 @@ class VanityHash:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest(**self.digest_opts)
+                    hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
                     if hexdigest[find_pos:find_pos_end] == to_find:
                         self.queue.put(('FOUND', (hexdigest, i)))
                     i += self.workers_total
@@ -336,7 +339,7 @@ class VanityHash:
 
         if '=' in args.digest_type:
             (args.digest_type, digest_len) = args.digest_type.split('=')
-            self.digest_opts['length'] = int(digest_len)
+            self.digest_args = [int(digest_len)]
 
         if args.digest_type == 'sha1alt':
             args.digest_type = 'sha1'
@@ -416,7 +419,7 @@ class VanityHash:
 
         # Test the position specified is correct according to the given
         # hash type.
-        hexdigestsize = len(testctx.hexdigest(**self.digest_opts))
+        hexdigestsize = len(testctx.hexdigest(*self.digest_args, **self.digest_kwargs))
         maxpos = hexdigestsize - len(args.find)
         if args.find_pos < 0:
             args.find_pos += hexdigestsize
@@ -469,7 +472,7 @@ class VanityHash:
             sys.stdout.buffer.flush()
         logging.info('Done.')
 
-        origdigest = self.ctx.copy().hexdigest(**self.digest_opts)
+        origdigest = self.ctx.copy().hexdigest(*self.digest_args, **self.digest_kwargs)
         logging.info('Original data: {} bytes, {} {}'.format(datalen, self.args.digest_type.upper(), origdigest))
 
     def report_progress(self):
