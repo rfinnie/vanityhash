@@ -517,6 +517,30 @@ class HashlibCRC32:
         return bytes_to_hex(self.digest())
 
 
+class HashlibBSD:
+    """hashlib-compatible BSD digest."""
+    _checksum = 0
+    name = 'bsd'
+    digestsize = 2
+    digest_size = 2
+    block_size = 1
+
+    def copy(self):
+        return copy.copy(self)
+
+    def update(self, data):
+        for ch in data:
+            self._checksum = (self._checksum >> 1) + ((self._checksum & 1) << 15)
+            self._checksum += ch
+            self._checksum &= 0xffff
+
+    def digest(self):
+        return struct.pack(b'>H', self._checksum)
+
+    def hexdigest(self):
+        return bytes_to_hex(self.digest())
+
+
 class HashlibAdler32:
     """hashlib-compatible Adler-32."""
     _checksum = 1
@@ -603,6 +627,7 @@ class ExtendedHashlib:
         'null': HashlibNull,
         'crc32': HashlibCRC32,
         'adler32': HashlibAdler32,
+        'bsd': HashlibBSD,
     }
 
     def __init__(self):
