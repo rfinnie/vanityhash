@@ -86,6 +86,14 @@ class VanityHash:
             level=(logging.ERROR if self.args.quiet else logging.INFO),
         )
 
+        if self.args.list_digests:
+            for digest in sorted(set(
+                [x.lower() for x in ExtendedHashlib().algorithms_available]
+            )):
+                print(digest)
+            return
+
+        self.ctx = ExtendedHashlib().new(self.args.digest_type)
         # Pre-compute the largest integer to be tested.
         self.space_max = 0
         for i in range(0, self.args.bits):
@@ -261,7 +269,7 @@ class VanityHash:
         )
 
         parser.add_argument(
-            'find', type=str,
+            'find', type=str, default=None, nargs='?',
             help='Hex string to search for',
         )
 
@@ -309,6 +317,10 @@ class VanityHash:
             '--append_empty', '-e', action='store_true',
             help='Where to add a zeroed pack in append mode, if no match is found',
         )
+        parser.add_argument(
+            '--list-digests', action='store_true',
+            help='List available digests',
+        )
 
         args = parser.parse_args(args=argv[1:])
 
@@ -333,6 +345,11 @@ class VanityHash:
             parser.error('Invalid bits-pack')
 
         # Validate the desired hex fragment
+        if args.find is None:
+            if not args.list_digests:
+                parser.error('Hex string required')
+            # Fake value, won't be using it for list_digests
+            args.find = 'ffffffff'
         for i in args.find:
             if i not in '0 1 2 3 4 5 6 7 8 9 a b c d e f'.split():
                 parser.error('Invalid search hex string')
