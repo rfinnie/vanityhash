@@ -359,6 +359,11 @@ class VanityHash:
         # Build the worker options.
         if args.workers_s == 'guess':
             try:
+                args.workers_s = str(len(os.sched_getaffinity(0)))
+            except AttributeError:
+                pass
+        if args.workers_s == 'guess':
+            try:
                 args.workers_s = str(multiprocessing.cpu_count())
             except NotImplementedError:
                 args.workers_s = str(1)
