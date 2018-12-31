@@ -20,17 +20,21 @@
 # 02110-1301, USA.
 ########################################################################
 
+import os
 import sys
+import argparse
 import hashlib
 import struct
 import multiprocessing
 import queue
 import time
-import getopt
 import codecs
 import zlib
 import copy
 import random
+
+
+__version__ = '2.0'
 
 
 class VanityHash:
@@ -66,51 +70,45 @@ class VanityHash:
     # Pack type of hash candidates
     pack_type = b'=L'
 
-    # Whether to display human-readable information to stderr
-    opt_quiet = False
-    # Search space, in bits
-    opt_bits = 24
-    # Total size containing the search space, in bits
-    opt_bits_pack = 0
-    # Endianness of the built container
-    opt_byte_order = 'native'
-    # Worker specification provided by the user
-    opt_workers_s = 'guess'
-    # Hash digest type
-    opt_digest_type = 'md5'
-    # How often to display progress information
-    opt_progress_interval = 5.0
-    # Whether to output the original data + the first result
-    opt_append = False
-    # Zero-indexed position within the hash to search
-    opt_find_pos = 0
-    # Whether to find the desired fragment anywhere in the hash
-    opt_find_any_pos = False
-    # Where to add a zeroed pack in append mode, if no match is found
-    opt_append_empty = False
-
-    def __init__(self):
-        """Initialize the class."""
-        # Parse getopts.
-        try:
-            self.parse_options()
-        except RuntimeError as e:
-            self.usage()
-            self.log('Error: %s' % e)
-            sys.exit(2)
+    # Argparse object
+    args = None
 
     def main(self):
         """Main program loop."""
+        # Parse getopts.
+        self.args = self.parse_args()
+
+        # Pre-compute the largest integer to be tested.
+        self.space_max = 0
+        for i in range(0, self.args.bits):
+            self.space_max += 2 ** i
+
+        # Build a pack type based on the bits_pack size.
+        if self.args.byte_order == 'little':
+            self.pack_type = b'<'
+        elif self.args.byte_order == 'big':
+            self.pack_type = b'>'
+        else:
+            self.pack_type = b'='
+        if self.args.bits_pack == 64:
+            self.pack_type += b'Q'
+        elif self.args.bits_pack == 32:
+            self.pack_type += b'L'
+        elif self.args.bits_pack == 16:
+            self.pack_type += b'H'
+        else:
+            self.pack_type += b'B'
+
         # Read stdin data.
         self.read_data()
 
-        if self.opt_find_any_pos:
+        if self.args.find_any_pos:
             self.log('Searching for %s at any position in a %d-bit space.' % (
-                self.opt_find, self.opt_bits
+                self.args.find, self.args.bits
             ))
         else:
             self.log('Searching for %s at position %d in a %d-bit space.' % (
-                self.opt_find, self.opt_find_pos, self.opt_bits
+                self.args.find, self.args.find_pos, self.args.bits
             ))
 
         self.start_time = time.time()
@@ -135,7 +133,7 @@ class VanityHash:
 
         # Loop through messages from children, occasionally reporting
         # hashing progress.
-        self.next_progress_time = self.start_time + self.opt_progress_interval
+        self.next_progress_time = self.start_time + self.args.progress_interval
         while True:
             try:
                 self.process_message()
@@ -147,8 +145,8 @@ class VanityHash:
             if len(multiprocessing.active_children()) == 0:
                 break
 
-        if self.opt_append and self.opt_append_empty and not self.printed_append:
-            sys.stdout.buffer.write(b'\x00' * int(self.opt_bits_pack / 8))
+        if self.args.append and self.args.append_empty and not self.printed_append:
+            sys.stdout.buffer.write(b'\x00' * int(self.args.bits_pack / 8))
             sys.stdout.buffer.flush()
             self.printed_append = True
 
@@ -157,7 +155,7 @@ class VanityHash:
         self.log('Search finished in %02d:%02d, %d match%s found in %d%% of a %d-bit space.' % (
             (delta_time / 60), (delta_time % 60), self.total_found,
             ((self.total_found != 1) and 'es' or ''),
-            ((self.total_searched - 1) / self.space_max * 100), self.opt_bits
+            ((self.total_searched - 1) / self.space_max * 100), self.args.bits
         ))
 
     def worker(self, num_begin):
@@ -167,10 +165,10 @@ class VanityHash:
         time of the fork from the parent process.  Communication back to
         the parent is done by the queue object.
         """
-        to_find = self.opt_find
+        to_find = self.args.find
         to_find_len = len(to_find)
-        find_pos = self.opt_find_pos
-        find_anypos = self.opt_find_any_pos
+        find_pos = self.args.find_pos
+        find_anypos = self.args.find_any_pos
         find_pos_end = find_pos + to_find_len
 
         # Start out with a group of 10,000 hashes.  This will be revised
@@ -236,153 +234,157 @@ class VanityHash:
         """Return a hex representation of binary byte data."""
         return codecs.encode(b, 'hex_codec').decode('ascii')
 
-    def parse_options(self):
-        """Parse and validate command-line options."""
-        try:
-            opts, args = getopt.getopt(sys.argv[1:], '?b:w:d:s:at:yqp:n:e', [
-                'help', 'bits=', 'workers=', 'digest=', 'progress=', 'append',
-                'bits-pack=', 'any-position', 'quiet', 'position=',
-                'byte-order=', 'append-empty'
-            ])
-        except getopt.GetoptError as err:
-            raise RuntimeError(str(err))
-        for o, a in opts:
-            if o in ('?', '--help'):
-                self.usage()
-                sys.exit(2)
-            elif o in ('-b', '--bits'):
-                self.opt_bits = int(a)
-                if (self.opt_bits < 1) or (self.opt_bits > 64):
-                    raise RuntimeError('Search space must be 64 bits or less')
-            elif o in ('-t', '--bits-pack'):
-                self.opt_bits_pack = int(a)
-            elif o in ('-w', '--workers'):
-                self.opt_workers_s = a
-            elif o in ('-d', '--digest'):
-                if a == 'sha1alt':
-                    a = 'sha1'
-                self.opt_digest_type = a
-            elif o in ('-s', '--progress'):
-                self.opt_progress_interval = float(a)
-            elif o in ('-a', '--append'):
-                self.opt_append = True
-            elif o in ('-p', '--position'):
-                self.opt_find_pos = int(a)
-            elif o in ('-y', '--any-position'):
-                self.opt_find_any_pos = True
-            elif o in ('-q', '--quiet'):
-                self.opt_quiet = True
-            elif o in ('-n', '--byte-order'):
-                if a in ('native', 'little', 'big'):
-                    self.opt_byte_order = a
-                else:
-                    raise RuntimeError('Invalid byte order, must be one of: %s' % str(('native', 'little', 'big')))
-            elif o in ('-e', '--append-empty'):
-                self.opt_append_empty = True
-            else:
-                assert False, 'unhandled option %s' % o
+    def parse_args(self, argv=None):
+        """Parse user arguments."""
+        if argv is None:
+            argv = sys.argv
 
-        if len(args) < 1:
-            self.usage()
-            sys.exit(2)
-        self.opt_find = args[0].lower()
+        parser = argparse.ArgumentParser(
+            description='vanityhash ({})'.format(__version__),
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            prog=os.path.basename(argv[0]),
+        )
+
+        parser.add_argument(
+            '--version', '-V', action='version',
+            version=__version__,
+            help='report the program version',
+        )
+
+        parser.add_argument(
+            'find', type=str,
+            help='Hex string to search for',
+        )
+
+        parser.add_argument(
+            '--bits', '-b', type=int, default=24,
+            help='Search space, in bits',
+        )
+        parser.add_argument(
+            '--workers', '-w', dest='workers_s', type=str, default='guess',
+            help='Worker specification',
+        )
+        parser.add_argument(
+            '--digest', '-d', dest='digest_type', type=str, default='md5',
+            help='Hash digest type',
+        )
+        parser.add_argument(
+            '--progress', '-s', dest='progress_interval', type=float, default=5.0,
+            help='How often to display progress information, in seconds',
+        )
+        parser.add_argument(
+            '--append', '-a', action='store_true',
+            help='Whether to output the original data + the first result',
+        )
+        parser.add_argument(
+            '--bits-pack', '-t', type=int, default=0,
+            help='Total size containing the search space, in bits',
+        )
+        parser.add_argument(
+            '--any_position', '-y', dest='find_any_pos', action='store_true',
+            help='Whether to find the desired fragment anywhere in the hash',
+        )
+        parser.add_argument(
+            '--quiet', '-q', action='store_true',
+            help='Whether to display human-readable information to stderr',
+        )
+        parser.add_argument(
+            '--position', '-p', dest='find_pos', type=int, default=0,
+            help='Zero-indexed position within the hash to search',
+        )
+        parser.add_argument(
+            '--byte-order', '-n', choices=['native', 'little', 'big'], default='native',
+            help='Endianness of the built container',
+        )
+        parser.add_argument(
+            '--append_empty', '-e', action='store_true',
+            help='Where to add a zeroed pack in append mode, if no match is found',
+        )
+
+        args = parser.parse_args(args=argv[1:])
+
+        if args.digest_type == 'sha1alt':
+            args.digest_type = 'sha1'
+        if (args.bits < 1) or (args.bits > 64):
+            parser.error('Search space must be 64 bits or less')
 
         # Generate the container size if not specified.
-        if self.opt_bits_pack == 0:
-            self.opt_bits_pack = 1
-            while self.opt_bits_pack < self.opt_bits:
-                self.opt_bits_pack *= 2
-            if self.opt_bits_pack < 8:
-                self.opt_bits_pack = 8
+        if args.bits_pack == 0:
+            args.bits_pack = 1
+            while args.bits_pack < args.bits:
+                args.bits_pack *= 2
+            if args.bits_pack < 8:
+                args.bits_pack = 8
         # Validate the container size.
-        if (self.opt_bits_pack < self.opt_bits) or (self.opt_bits_pack > 64):
-            raise RuntimeError('Invalid bits-pack')
+        if (args.bits_pack < args.bits) or (args.bits_pack > 64):
+            parser.error('Invalid bits-pack')
         # Make sure the container size is a power of 2.
-        bits_pack_bytes = int(self.opt_bits_pack / 8)
+        bits_pack_bytes = int(args.bits_pack / 8)
         if not (bits_pack_bytes & (bits_pack_bytes - 1)) == 0:
-            raise RuntimeError('Invalid bits-pack')
+            parser.error('Invalid bits-pack')
 
         # Validate the desired hex fragment
-        for i in self.opt_find:
+        for i in args.find:
             if i not in '0 1 2 3 4 5 6 7 8 9 a b c d e f'.split():
-                raise RuntimeError('Invalid search hex string')
-
-        # Pre-compute the largest integer to be tested.
-        self.space_max = 0
-        for i in range(0, self.opt_bits):
-            self.space_max += 2 ** i
-
-        # Build a pack type based on the bits_pack size.
-        if self.opt_byte_order == 'little':
-            self.pack_type = b'<'
-        elif self.opt_byte_order == 'big':
-            self.pack_type = b'>'
-        else:
-            self.pack_type = b'='
-        if self.opt_bits_pack == 64:
-            self.pack_type += b'Q'
-        elif self.opt_bits_pack == 32:
-            self.pack_type += b'L'
-        elif self.opt_bits_pack == 16:
-            self.pack_type += b'H'
-        else:
-            self.pack_type += b'B'
+                parser.error('Invalid search hex string')
 
         # Build the worker options.
-        if self.opt_workers_s == 'guess':
+        if args.workers_s == 'guess':
             try:
-                self.opt_workers_s = str(multiprocessing.cpu_count())
+                args.workers_s = str(multiprocessing.cpu_count())
             except NotImplementedError:
-                self.opt_workers_s = str(1)
-        if self.opt_workers_s.isdigit():
+                args.workers_s = str(1)
+        if args.workers_s.isdigit():
             # If a single number is given, the real and total workers
             # are the same.
-            self.workers_total = int(self.opt_workers_s)
+            self.workers_total = int(args.workers_s)
             self.workers_real_l = range(self.workers_total)
         else:
             # If a specification is given, validate and build according
             # to the specification.
             try:
-                (workert, workerx) = self.opt_workers_s.split(':')
+                (workert, workerx) = args.workers_s.split(':')
             except ValueError:
-                raise RuntimeError('Invalid worker specification')
+                parser.error('Invalid worker specification')
             self.workers_total = int(workert)
             for i in workerx.split(','):
                 if not i.isdigit():
-                    raise RuntimeError('Invalid worker specification')
+                    parser.error('Invalid worker specification')
                 i = int(i)
                 if (i > self.workers_total) or (i < 1):
-                    raise RuntimeError('Invalid worker specification')
+                    parser.error('Invalid worker specification')
                 if not (i - 1) in self.workers_real_l:
                     self.workers_real_l.append(i - 1)
                 self.workers_real_l.sort()
         self.workers_real = len(self.workers_real_l)
         if (self.workers_total < 1) or (self.workers_real < 1):
-            raise RuntimeError('Invalid number of workers')
+            parser.error('Invalid number of workers')
         if self.workers_real > 128:
-            raise RuntimeError('Cannot be more than 128 workers')
+            parser.error('Cannot be more than 128 workers')
         self.workers_real_fraction = self.workers_real / self.workers_total
 
         # Test the hash type is valid.
         try:
-            testctx = ExtendedHashlib().new(self.opt_digest_type)
+            testctx = ExtendedHashlib().new(args.digest_type)
         except ValueError:
-            raise RuntimeError('Invalid digest type')
+            parser.error('Invalid digest type')
 
         # Test the position specified is correct according to the given
         # hash type.
         hexdigestsize = testctx.digest_size * 2
-        maxpos = hexdigestsize - len(self.opt_find)
-        if self.opt_find_pos < 0:
-            self.opt_find_pos += hexdigestsize
-        if self.opt_find_pos > maxpos:
-            raise RuntimeError('Pattern position %d goes beyond end of %s digest' % (
-                self.opt_find_pos, self.opt_digest_type.upper())
+        maxpos = hexdigestsize - len(args.find)
+        if args.find_pos < 0:
+            args.find_pos += hexdigestsize
+        if args.find_pos > maxpos:
+            parser.error('Pattern position %d goes beyond end of %s digest' % (
+                args.find_pos, args.digest_type.upper())
             )
+
+        return args
 
     def log(self, text='', newline=True):
         """Write text to stderr."""
-        if self.opt_quiet:
+        if self.args.quiet:
             return
         if newline:
             print(text, file=sys.stderr)
@@ -401,10 +403,10 @@ class VanityHash:
             (msgdigest, msgdata) = msg[1]
             msgdata = struct.pack(self.pack_type, msgdata)
             self.log('Match found: 0x%s -> %s %s' % (
-                self.bytes_to_hex(msgdata), self.opt_digest_type.upper(), msgdigest)
+                self.bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest)
             )
             self.total_found += 1
-            if self.opt_append:
+            if self.args.append:
                 if not self.printed_append:
                     sys.stdout.buffer.write(msgdata)
                     sys.stdout.buffer.flush()
@@ -416,23 +418,23 @@ class VanityHash:
 
     def read_data(self):
         """Read data from stdin and build the initial hash context."""
-        self.ctx = ExtendedHashlib().new(self.opt_digest_type)
+        self.ctx = ExtendedHashlib().new(self.args.digest_type)
         self.log('Reading input data and adding to digest...', newline=False)
         datalen = 0
         while True:
             buf = sys.stdin.buffer.read(1024)
             if not buf:
                 break
-            if self.opt_append:
+            if self.args.append:
                 sys.stdout.buffer.write(buf)
             datalen += len(buf)
             self.ctx.update(buf)
-        if self.opt_append:
+        if self.args.append:
             sys.stdout.buffer.flush()
         self.log('done.')
 
         origdigest = self.ctx.copy().hexdigest()
-        self.log('Original data: %d bytes, %s %s' % (datalen, self.opt_digest_type.upper(), origdigest))
+        self.log('Original data: %d bytes, %s %s' % (datalen, self.args.digest_type.upper(), origdigest))
 
     def report_progress(self):
         """Occasionally output progress statistics."""
@@ -458,7 +460,7 @@ class VanityHash:
             ))
         else:
             self.log('%3d%% searched...' % percent)
-        self.next_progress_time = now + self.opt_progress_interval
+        self.next_progress_time = now + self.args.progress_interval
 
     def kill_children(self):
         """Kill all child subprocesses."""
