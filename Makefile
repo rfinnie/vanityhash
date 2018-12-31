@@ -2,15 +2,10 @@ PREFIX := /usr/local
 
 all: vanityhash
 
-# Docs are shipped pre-compiled
-doc: vanityhash.1 vanityhash.1.html
+doc: vanityhash.1
 
-vanityhash.1: vanityhash.pod
-	pod2man -c '' -r '' -s 1 $< >$@
-
-vanityhash.1.html: vanityhash.pod
-	pod2html $< >$@
-	rm -f pod2htmd.tmp pod2htmi.tmp
+%.1: %.md
+	pandoc -s -t man -o $@ $<
 
 install: all
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/bin
@@ -23,4 +18,4 @@ distclean: clean
 clean:
 
 doc-clean:
-	rm -f vanityhash.1 vanityhash.1.html
+	rm -f vanityhash.1
