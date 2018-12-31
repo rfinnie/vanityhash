@@ -554,10 +554,41 @@ class HashlibRandom:
         return codecs.encode(self.digest(), 'hex_codec')
 
 
+class HashlibNull:
+    """hashlib-compatible dummy null module."""
+    name = 'null'
+    _checksum = b''
+    _checksum_hex = ''
+    digestsize = 32
+    digest_size = 32
+    block_size = 64
+
+    def __init__(self, digest_size=32, block_size=64):
+        self.digestsize = digest_size
+        self.digest_size = digest_size
+        self.block_size = block_size
+        self._checksum = bytes(digest_size)
+        self._checksum_hex = codecs.encode(self._checksum, 'hex_codec')
+
+    def copy(self):
+        # Cheating here in the name of speed
+        return self
+
+    def update(self, data):
+        pass
+
+    def digest(self):
+        return self._checksum
+
+    def hexdigest(self):
+        return self._checksum_hex
+
+
 class ExtendedHashlib:
     """hashlib-compatible extension system."""
     extended_algorithms = {
         'random': HashlibRandom,
+        'null': HashlibNull,
         'crc32': HashlibCRC32,
         'adler32': HashlibAdler32,
     }
