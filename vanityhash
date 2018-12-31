@@ -254,6 +254,20 @@ class VanityHash:
         conn.send(('DONE', ()))
         time.sleep(10)
 
+    def pretty_number(self, n, divisor=1000, rollover=1.0, format='{number:0.02f} {prefix}'):
+        if divisor == 1024:
+            prefixes = ['', 'Ki', 'Mi', 'Gi', 'Ti']
+        else:
+            prefixes = ['', 'K', 'M', 'G', 'T']
+        ppos = 0
+        max_ppos = len(prefixes) - 1
+        while n >= (divisor * rollover):
+            ppos = ppos + 1
+            n = n / float(divisor)
+            if ppos >= max_ppos:
+                break
+        return format.format(number=n, prefix=prefixes[ppos])
+
     def bytes_to_hex(self, b):
         """Return a hex representation of binary byte data."""
         return codecs.encode(b, 'hex_codec').decode('ascii')
@@ -490,9 +504,17 @@ class VanityHash:
             remaining = (
                 (self.space_max * self.workers_real_fraction - self.total_searched) / (self.total_searched / elapsed)
             )
-            self.log('%3d%% searched, ~%02d:%02d remaining...' % (
-                percent, (remaining / 60), (remaining % 60))
+            estimated_time = (
+                (self.space_max * self.workers_real_fraction) / (self.total_searched / elapsed)
             )
+            self.log('%3d%% searched, ~%02d:%02d/%02d:%02d remaining, %s' % (
+                percent,
+                (remaining / 60),
+                (remaining % 60),
+                (estimated_time / 60),
+                (estimated_time % 60),
+                self.pretty_number(self.total_searched / elapsed, format='{number:0.02f} {prefix}hash/s'),
+            ))
         else:
             self.log('%3d%% searched...' % percent)
         self.next_progress_time = now + self.opt_progress_interval
