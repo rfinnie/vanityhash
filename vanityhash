@@ -187,12 +187,16 @@ class VanityHash:
             self.printed_append = True
 
         # Final statistics.
-        logging.info('Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space.'.format(
-            datetime.datetime.now() - self.start_time,
+        now = datetime.datetime.now()
+        elapsed = now - self.start_time
+        hashes_per_sec = self.total_searched / elapsed.total_seconds()
+        logging.info('Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space, {}.'.format(
+            elapsed,
             self.total_found,
             ((self.total_found != 1) and 'es' or ''),
             ((self.total_searched - 1) / self.space_max * 100),
             self.args.bits,
+            pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
         ))
 
     def worker(self, num_begin):
