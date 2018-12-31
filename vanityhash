@@ -546,6 +546,14 @@ class ExtendedHashlib:
     }
 
     def __init__(self):
+        # https://github.com/rfinnie/vanityhash/issues/1
+        try:
+            import xxhash
+            self.extended_algorithms['xxh32'] = xxhash.xxh32
+            self.extended_algorithms['xxh64'] = xxhash.xxh64
+        except (ImportError, AttributeError):
+            pass
+
         self.algorithms_available = set(
             tuple(hashlib.algorithms_available) +
             tuple(self.extended_algorithms.keys()))
