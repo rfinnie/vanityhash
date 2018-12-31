@@ -65,8 +65,6 @@ class VanityHash:
     Child subprocesses will have access to the instance of this class,
     forked from the master.
     """
-    version = '2.0'
-
     # multiprocessing queue object
     queue = multiprocessing.Queue()
     # hashlib context
@@ -84,16 +82,22 @@ class VanityHash:
     # Number of real workers to be used
     workers_real = 0
     # List of zero-indexed workers to be used
-    workers_real_l = []
+    workers_real_l = None
     # Total workers in the worker set
     workers_total = 0
     # Proporition of real to total workers
     workers_real_fraction = 0.0
     # Pack type of hash candidates
     pack_type = b'=L'
+    # Dict of options for digest() / hexdigest()
+    digest_opts = None
 
     # Argparse object
     args = None
+
+    def __init__(self):
+        self.workers_real_l = []
+        self.digest_opts = {}
 
     def main(self):
         """Main program loop."""
@@ -232,7 +236,7 @@ class VanityHash:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest()
+                    hexdigest = ctxcopy.hexdigest(**self.digest_opts)
                     if hexdigest.find(to_find) > -1:
                         self.queue.put(('FOUND', (hexdigest, i)))
                     i += self.workers_total
@@ -240,7 +244,7 @@ class VanityHash:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest()
+                    hexdigest = ctxcopy.hexdigest(**self.digest_opts)
                     if hexdigest[find_pos:find_pos_end] == to_find:
                         self.queue.put(('FOUND', (hexdigest, i)))
                     i += self.workers_total
@@ -330,6 +334,10 @@ class VanityHash:
 
         args = parser.parse_args(args=argv[1:])
 
+        if '=' in args.digest_type:
+            (args.digest_type, digest_len) = args.digest_type.split('=')
+            self.digest_opts['length'] = int(digest_len)
+
         if args.digest_type == 'sha1alt':
             args.digest_type = 'sha1'
         if (args.bits < 1) or (args.bits > 64):
@@ -408,7 +416,7 @@ class VanityHash:
 
         # Test the position specified is correct according to the given
         # hash type.
-        hexdigestsize = testctx.digest_size * 2
+        hexdigestsize = len(testctx.hexdigest(**self.digest_opts))
         maxpos = hexdigestsize - len(args.find)
         if args.find_pos < 0:
             args.find_pos += hexdigestsize
@@ -461,7 +469,7 @@ class VanityHash:
             sys.stdout.buffer.flush()
         logging.info('Done.')
 
-        origdigest = self.ctx.copy().hexdigest()
+        origdigest = self.ctx.copy().hexdigest(**self.digest_opts)
         logging.info('Original data: {} bytes, {} {}'.format(datalen, self.args.digest_type.upper(), origdigest))
 
     def report_progress(self):
