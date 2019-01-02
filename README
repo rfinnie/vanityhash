@@ -14,8 +14,8 @@ types (MD5, SHA1, SHA256, etc).
 
 INSTALLATION
 
-vanityhash requires Python 2.6 or newer, and has support for Python 3.  
-All modules used by vanityhash are part of the core Python distribution.
+vanityhash requires Python 3.4 or newer, and no non-core Python moudules
+(though it will use several if present, see below).
 
 Digest support depends on the OpenSSL features used to compile hashlib.
 Run `vanityhash --list-digests` to get a list of usable digests.  The
