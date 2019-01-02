@@ -93,6 +93,8 @@ class VanityHash:
     digest_args = None
     # Dict of kwargs for digest() / hexdigest()
     digest_kwargs = None
+    # Whether vanityhash is in the middle of shutting down
+    in_shutdown = False
 
     # Argparse object
     args = None
@@ -183,6 +185,9 @@ class VanityHash:
                 self.report_progress()
             except KeyboardInterrupt:
                 logging.info('Stopping workers...')
+                self.kill_children()
+
+            if self.args.deadline and (datetime.datetime.now() - self.start_time).total_seconds() >= self.args.deadline:
                 self.kill_children()
 
             if len(multiprocessing.active_children()) == 0:
@@ -333,6 +338,10 @@ class VanityHash:
         parser.add_argument(
             '--list-digests', action='store_true',
             help='List available digests',
+        )
+        parser.add_argument(
+            '--deadline', type=float, default=0.0,
+            help='Maximum processing time (seconds)',
         )
 
         args = parser.parse_args(args=argv[1:])
@@ -503,6 +512,9 @@ class VanityHash:
 
     def kill_children(self):
         """Kill all child subprocesses."""
+        if self.in_shutdown:
+            return
+        self.in_shutdown = True
         for child_process in multiprocessing.active_children():
             child_process.terminate()
 
