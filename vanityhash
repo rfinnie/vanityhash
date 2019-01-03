@@ -115,7 +115,7 @@ class VanityHash:
 
         if self.args.list_digests:
             for digest in sorted(set(
-                [x.lower() for x in ExtendedHashlib().algorithms_available]
+                [x.lower() for x in ExtendedHashlib().algorithms_available],
             )):
                 print(digest)
             return
@@ -147,11 +147,11 @@ class VanityHash:
 
         if self.args.find_any_pos:
             logging.info('Searching for {} at any position in a {}-bit space.'.format(
-                self.args.find, self.args.bits
+                self.args.find, self.args.bits,
             ))
         else:
             logging.info('Searching for {} at position {} in a {}-bit space.'.format(
-                self.args.find, self.args.find_pos, self.args.bits
+                self.args.find, self.args.find_pos, self.args.bits,
             ))
 
         self.start_time = datetime.datetime.now()
@@ -164,7 +164,7 @@ class VanityHash:
 
         if self.workers_total == self.workers_real:
             logging.info('Spawned {} worker{}.'.format(
-                self.workers_real, ((self.workers_real != 1) and 's' or '')
+                self.workers_real, ((self.workers_real != 1) and 's' or ''),
             ))
         else:
             logging.info('Spawned {} of {} worker{} ({}).'.format(
@@ -425,7 +425,7 @@ class VanityHash:
             args.find_pos += hexdigestsize
         if args.find_pos > maxpos:
             parser.error('Pattern position {} goes beyond end of {} digest'.format(
-                args.find_pos, args.digest_type.upper())
+                args.find_pos, args.digest_type.upper()),
             )
 
         return args
@@ -442,7 +442,7 @@ class VanityHash:
             (msgdigest, msgdata) = msg[1]
             msgdata = struct.pack(self.pack_type, msgdata)
             logging.info('Match found: 0x{} -> {} {}'.format(
-                bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest)
+                bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest),
             )
             self.total_found += 1
             if self.args.append:
@@ -485,10 +485,10 @@ class VanityHash:
         if self.total_searched > 0:
             hashes_per_sec = self.total_searched / elapsed.total_seconds()
             estimated_time = datetime.timedelta(
-                seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec)
+                seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
             )
             remaining = datetime.timedelta(
-                seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec)
+                seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
             )
             remaining = estimated_time - elapsed
             logging.info('{:0.02f}% searched, ~{} remaining of ~{}, {}'.format(
