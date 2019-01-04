@@ -420,8 +420,6 @@ class VanityHash:
         self.workers_real = len(self.workers_real_l)
         if (self.workers_total < 1) or (self.workers_real < 1):
             parser.error('Invalid number of workers')
-        if self.workers_real > 128:
-            parser.error('Cannot be more than 128 workers')
         self.workers_real_fraction = self.workers_real / self.workers_total
 
         # Test the hash type is valid.
