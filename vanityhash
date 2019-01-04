@@ -502,19 +502,24 @@ class VanityHash:
                 remaining = strip_microseconds(datetime.timedelta(
                     seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
                 ))
-                logging.info('{:0.02f}% searched, ~{} remaining of ~{}, {}'.format(
+                logging.info('{:0.02f}% searched in {}, ~{} remaining of ~{}, {}'.format(
                     percent,
+                    strip_microseconds(elapsed),
                     remaining,
                     estimated_time,
                     pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
                 ))
             except OverflowError:
-                logging.info('{:0.02f}% searched, {}'.format(
+                logging.info('{:0.02f}% searched in {}, {}'.format(
                     percent,
+                    strip_microseconds(elapsed),
                     pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
                 ))
         else:
-            logging.info('{:0.02f}% searched...'.format(percent))
+            logging.info('{:0.02f}% searched in {}'.format(
+                strip_microseconds(percent),
+                elapsed,
+            ))
         self.next_progress_time = now + datetime.timedelta(seconds=self.args.progress_interval)
 
     def kill_children(self):
