@@ -54,6 +54,10 @@ def pretty_number(n, divisor=1000, rollover=1.0, format='{number:0.02f} {prefix}
     return format.format(number=n, prefix=prefixes[ppos])
 
 
+def strip_microseconds(td):
+    return td - datetime.timedelta(microseconds=td.microseconds)
+
+
 def bytes_to_hex(b):
     """Return a hex representation of binary byte data."""
     return codecs.encode(b, 'hex_codec').decode('ascii')
@@ -493,19 +497,24 @@ class VanityHash:
         percent = self.total_searched / (self.space_max * self.workers_real_fraction) * 100
         if self.total_searched > 0:
             hashes_per_sec = self.total_searched / elapsed.total_seconds()
-            estimated_time = datetime.timedelta(
-                seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
-            )
-            remaining = datetime.timedelta(
-                seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
-            )
-            remaining = estimated_time - elapsed
-            logging.info('{:0.02f}% searched, ~{} remaining of ~{}, {}'.format(
-                percent,
-                remaining - datetime.timedelta(microseconds=remaining.microseconds),
-                estimated_time - datetime.timedelta(microseconds=estimated_time.microseconds),
-                pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
-            ))
+            try:
+                estimated_time = strip_microseconds(datetime.timedelta(
+                    seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
+                ))
+                remaining = strip_microseconds(datetime.timedelta(
+                    seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
+                ))
+                logging.info('{:0.02f}% searched, ~{} remaining of ~{}, {}'.format(
+                    percent,
+                    remaining,
+                    estimated_time,
+                    pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
+                ))
+            except OverflowError:
+                logging.info('{:0.02f}% searched, {}'.format(
+                    percent,
+                    pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
+                ))
         else:
             logging.info('{:0.02f}% searched...'.format(percent))
         self.next_progress_time = now + datetime.timedelta(seconds=self.args.progress_interval)
