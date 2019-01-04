@@ -336,7 +336,7 @@ class VanityHash:
             help='Endianness of the built container',
         )
         parser.add_argument(
-            '--append_empty', '-e', action='store_true',
+            '--append-empty', '-e', action='store_true',
             help='Where to add a zeroed pack in append mode, if no match is found',
         )
         parser.add_argument(
