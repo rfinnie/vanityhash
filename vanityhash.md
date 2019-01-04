@@ -100,6 +100,9 @@ If no matches are found, the original data only is outputted.
 :   Normally vanityhash sends a fair amount of status information to STDERR during operation.
     When enabled, all non-error status information is instead suppressed.
 
+--debug
+:   Print extra debugging information.
+
 -?, --help
 :   Print a synposis and exit.
 

@@ -114,9 +114,15 @@ class VanityHash:
         self.args = self.parse_args()
 
         # Logging setup
+        if self.args.debug:
+            logging_level = logging.DEBUG
+        elif self.args.quiet:
+            logging_level = logging.ERROR
+        else:
+            logging_level = logging.INFO
         logging.basicConfig(
             format='%(message)s',
-            level=(logging.ERROR if self.args.quiet else logging.INFO),
+            level=logging_level
         )
 
         if self.args.list_digests:
@@ -164,8 +170,9 @@ class VanityHash:
 
         # Spawn worker children.
         for i in self.workers_real_l:
-            p = multiprocessing.Process(target=self.worker, args=(i,))
-            p.name = 'Worker {}'.format(i + 1)
+            worker_name = 'Worker {}'.format(i + 1)
+            p = multiprocessing.Process(target=self.worker, args=(worker_name, i,))
+            p.name = worker_name
             p.start()
 
         if self.workers_total == self.workers_real:
@@ -215,7 +222,7 @@ class VanityHash:
             pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
         ))
 
-    def worker(self, num_begin):
+    def worker(self, worker_name, num_begin):
         """Process hash instructions in a subprocess.
 
         Note that the state of the class instance is the state at the
@@ -250,7 +257,7 @@ class VanityHash:
                     ctxcopy.update(struct.pack(self.pack_type, i))
                     hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
                     if hexdigest.find(to_find) > -1:
-                        self.queue.put(('FOUND', (hexdigest, i)))
+                        self.queue.put(('FOUND', worker_name, (hexdigest, i)))
                     i += self.workers_total
             else:
                 while i <= group_num_end:
@@ -258,17 +265,18 @@ class VanityHash:
                     ctxcopy.update(struct.pack(self.pack_type, i))
                     hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
                     if hexdigest[find_pos:find_pos_end] == to_find:
-                        self.queue.put(('FOUND', (hexdigest, i)))
+                        self.queue.put(('FOUND', worker_name, (hexdigest, i)))
                     i += self.workers_total
+
+            now = time.time()
 
             # Figure out how many hashes were performed, and update the
             # parent.
-            report_i = (i - group_i_begin) / self.workers_total
-            self.queue.put(('PROGRESS', report_i))
+            report_i = int((i - group_i_begin) / self.workers_total)
+            self.queue.put(('PROGRESS', worker_name, report_i, (now - last_report)))
 
             # Figure out how many hashes are needed to run for the next
             # ~2 seconds.
-            now = time.time()
             next_report_i = int(2 * (report_i / (now - last_report)))
             last_report = now
             report_i = next_report_i
@@ -326,6 +334,10 @@ class VanityHash:
         parser.add_argument(
             '--quiet', '-q', action='store_true',
             help='Whether to display human-readable information to stderr',
+        )
+        parser.add_argument(
+            '--debug', action='store_true',
+            help='Print extra debugging information.',
         )
         parser.add_argument(
             '--position', '-p', dest='find_pos', type=int, default=0,
@@ -448,9 +460,14 @@ class VanityHash:
         except queue.Empty:
             return
         if msg[0] == 'PROGRESS':
-            self.total_searched += msg[1]
+            self.total_searched += msg[2]
+            logging.debug('{} reported {} searched in {:0.04f} seconds'.format(
+                msg[1],
+                msg[2],
+                msg[3],
+            ))
         elif msg[0] == 'FOUND':
-            (msgdigest, msgdata) = msg[1]
+            (msgdigest, msgdata) = msg[2]
             msgdata = struct.pack(self.pack_type, msgdata)
             logging.info('Match found: 0x{} -> {} {}'.format(
                 bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest),
