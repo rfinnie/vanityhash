@@ -77,6 +77,9 @@ If no matches are found, the original data only is outputted.
     This sets a worker space of 8 workers, but only launches workers 1, 3, 5 and 7 on host1, and 2, 4, 6 and 8 on host2.
     To do this, the input data must be on all hosts, and ideally the vanityhash version should be the same as well.
 
+--deadline=*seconds*
+:   The maximum number of seconds to run workers before finishing.
+
 --list-digests
 :   Print a list of available digests and exit.
 
