@@ -21,7 +21,7 @@ Digest support depends on the OpenSSL features used to compile hashlib.
 Run `vanityhash --list-digests` to get a list of usable digests.  The
 following may be available:
 
- * Built-in (null, random, crc32, adler32, bsd)
+ * Built-in (null, random, crc32, adler32, bsd, udp, 2ping)
  * OpenSSL-provided (md5, sha1, sha256, etc)
  * xxHash, if the xxhash module is installed (xxh32, xxh64)
 

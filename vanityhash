@@ -593,6 +593,88 @@ class HashlibBSD:
         return bytes_to_hex(self.digest())
 
 
+class Hashlib2Ping:
+    """hashlib-compatible 2ping digest."""
+    _held_data = b''
+    _checksum = 0
+    name = '2ping'
+    digestsize = 2
+    digest_size = 2
+    block_size = 2
+
+    def copy(self):
+        return copy.copy(self)
+
+    def update(self, data):
+        data = self._held_data + data
+
+        if (len(data) % 2 == 1):
+            self._held_data = bytes([data[-1]])
+            data = data[0:-1]
+
+        for i in range(0, len(data), 2):
+            self._checksum = self._checksum + (data[i] << 8) + data[i+1]
+            self._checksum = ((self._checksum & 0xffff) + (self._checksum >> 16))
+
+    def digest(self):
+        checksum = self._checksum
+
+        if self._held_data:
+            checksum = checksum + (ord(self._held_data) << 8)
+            checksum = ((checksum & 0xffff) + (checksum >> 16))
+
+        checksum = ~checksum & 0xffff
+
+        if checksum == 0:
+            checksum = 0xffff
+
+        return struct.pack(b'>H', checksum)
+
+    def hexdigest(self):
+        return bytes_to_hex(self.digest())
+
+
+class HashlibUDP:
+    """hashlib-compatible UDP digest."""
+    _held_data = b''
+    _checksum = 0
+    name = 'udp'
+    digestsize = 2
+    digest_size = 2
+    block_size = 2
+
+    def _carry_around_add(self, a, b):
+        c = a + b
+        return (c & 0xffff) + (c >> 16)
+
+    def copy(self):
+        return copy.copy(self)
+
+    def update(self, data):
+        data = self._held_data + data
+
+        if (len(data) % 2 == 1):
+            self._held_data = bytes([data[-1]])
+            data = data[0:-1]
+
+        for i in range(0, len(data), 2):
+            self._checksum = self._carry_around_add(self._checksum, (data[i] + (data[i+1] << 8)))
+
+    def digest(self):
+        checksum = self._checksum
+
+        if self._held_data:
+            checksum = self._carry_around_add(checksum, ord(self._held_data))
+
+        if checksum == 0:
+            checksum = 0xffff
+
+        return struct.pack(b'>H', checksum)
+
+    def hexdigest(self):
+        return bytes_to_hex(self.digest())
+
+
 class HashlibAdler32:
     """hashlib-compatible Adler-32."""
     _checksum = 1
@@ -674,13 +756,15 @@ class HashlibNull:
 
 class ExtendedHashlib:
     """hashlib-compatible extension system."""
-    extended_algorithms = {
-        'random': HashlibRandom,
-        'null': HashlibNull,
-        'crc32': HashlibCRC32,
-        'adler32': HashlibAdler32,
-        'bsd': HashlibBSD,
-    }
+    extended_algorithms = {x.name: x for x in [
+        HashlibRandom,
+        HashlibNull,
+        HashlibCRC32,
+        HashlibAdler32,
+        HashlibBSD,
+        Hashlib2Ping,
+        HashlibUDP,
+    ]}
 
     def __init__(self):
         # https://github.com/rfinnie/vanityhash/issues/1
