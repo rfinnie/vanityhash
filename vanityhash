@@ -548,246 +548,44 @@ class VanityHash:
             child_process.terminate()
 
 
-class HashlibCRC32:
-    """hashlib-compatible CRC32."""
-    _crc = 0
-    name = 'crc32'
-    digestsize = 4
-    digest_size = 4
-    block_size = 1
-
-    def copy(self):
-        return copy.copy(self)
-
-    def update(self, data):
-        self._crc = zlib.crc32(data, self._crc)
-
-    def digest(self):
-        return struct.pack(b'>I', (self._crc & 0xffffffff))
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class HashlibBSD:
-    """hashlib-compatible BSD digest."""
-    _checksum = 0
-    name = 'bsd'
-    digestsize = 2
-    digest_size = 2
-    block_size = 1
-
-    def copy(self):
-        return copy.copy(self)
-
-    def update(self, data):
-        for ch in data:
-            self._checksum = (self._checksum >> 1) + ((self._checksum & 1) << 15)
-            self._checksum += ch
-            self._checksum &= 0xffff
-
-    def digest(self):
-        return struct.pack(b'>H', self._checksum)
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class Hashlib2Ping:
-    """hashlib-compatible 2ping digest."""
-    _held_data = b''
-    _checksum = 0
-    name = '2ping'
-    digestsize = 2
-    digest_size = 2
-    block_size = 2
-
-    def copy(self):
-        return copy.copy(self)
-
-    def update(self, data):
-        data = self._held_data + data
-
-        if (len(data) % 2 == 1):
-            self._held_data = bytes([data[-1]])
-            data = data[0:-1]
-
-        for i in range(0, len(data), 2):
-            self._checksum = self._checksum + (data[i] << 8) + data[i+1]
-            self._checksum = ((self._checksum & 0xffff) + (self._checksum >> 16))
-
-    def digest(self):
-        checksum = self._checksum
-
-        if self._held_data:
-            checksum = checksum + (ord(self._held_data) << 8)
-            checksum = ((checksum & 0xffff) + (checksum >> 16))
-
-        checksum = ~checksum & 0xffff
-
-        if checksum == 0:
-            checksum = 0xffff
-
-        return struct.pack(b'>H', checksum)
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class HashlibUDP:
-    """hashlib-compatible UDP digest."""
-    _held_data = b''
-    _checksum = 0
-    name = 'udp'
-    digestsize = 2
-    digest_size = 2
-    block_size = 2
-
-    def _carry_around_add(self, a, b):
-        c = a + b
-        return (c & 0xffff) + (c >> 16)
-
-    def copy(self):
-        return copy.copy(self)
-
-    def update(self, data):
-        data = self._held_data + data
-
-        if (len(data) % 2 == 1):
-            self._held_data = bytes([data[-1]])
-            data = data[0:-1]
-
-        for i in range(0, len(data), 2):
-            self._checksum = self._carry_around_add(self._checksum, (data[i] + (data[i+1] << 8)))
-
-    def digest(self):
-        checksum = self._checksum
-
-        if self._held_data:
-            checksum = self._carry_around_add(checksum, ord(self._held_data))
-
-        if checksum == 0:
-            checksum = 0xffff
-
-        return struct.pack(b'>H', checksum)
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class HashlibAdler32:
-    """hashlib-compatible Adler-32."""
-    _checksum = 1
-    name = 'adler32'
-    digestsize = 4
-    digest_size = 4
-    block_size = 1
-
-    def copy(self):
-        return copy.copy(self)
-
-    def update(self, data):
-        self._checksum = zlib.adler32(data, self._checksum)
-
-    def digest(self):
-        return struct.pack(b'>I', (self._checksum & 0xffffffff))
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class HashlibRandom:
-    """hashlib-compatible dummy random module."""
-    _checksum = b''
-    name = 'random'
-    digestsize = 32
-    digest_size = 32
-    block_size = 64
-
-    def __init__(self, digest_size=32, block_size=64):
-        self.digestsize = digest_size
-        self.digest_size = digest_size
-        self.block_size = block_size
-        self.update('')
-
-    def copy(self):
-        # Cheating here in the name of speed
-        return self
-
-    def update(self, data):
-        self._checksum = bytes([random.randint(0, 255) for x in range(self.digest_size)])
-
-    def digest(self):
-        return self._checksum
-
-    def hexdigest(self):
-        return bytes_to_hex(self.digest())
-
-
-class HashlibNull:
-    """hashlib-compatible dummy null module."""
-    name = 'null'
-    _checksum = b''
-    _checksum_hex = ''
-    digestsize = 32
-    digest_size = 32
-    block_size = 64
-
-    def __init__(self, digest_size=32, block_size=64):
-        self.digestsize = digest_size
-        self.digest_size = digest_size
-        self.block_size = block_size
-        self._checksum = bytes(digest_size)
-        self._checksum_hex = bytes_to_hex(self._checksum)
-
-    def copy(self):
-        # Cheating here in the name of speed
-        return self
-
-    def update(self, data):
-        pass
-
-    def digest(self):
-        return self._checksum
-
-    def hexdigest(self):
-        return self._checksum_hex
-
-
 class ExtendedHashlib:
     """hashlib-compatible extension system."""
-    extended_algorithms = {x.name: x for x in [
-        HashlibRandom,
-        HashlibNull,
-        HashlibCRC32,
-        HashlibAdler32,
-        HashlibBSD,
-        Hashlib2Ping,
-        HashlibUDP,
-    ]}
-
     def __init__(self):
+        self.algorithms_available = set()
+        for name in hashlib.algorithms_available:
+            try:
+                vars(self)[name] = getattr(hashlib, name)
+                self.algorithms_available.update([name])
+            except AttributeError:
+                pass
+
+        try:
+            import hashlib_additional
+            for name in hashlib_additional.algorithms_available:
+                try:
+                    vars(self)[name] = getattr(hashlib_additional, name)
+                    self.algorithms_available.update([name])
+                except AttributeError:
+                    pass
+        except ImportError:
+            pass
+
         # https://github.com/rfinnie/vanityhash/issues/1
         try:
             import xxhash
-            self.extended_algorithms['xxh32'] = xxhash.xxh32
-            self.extended_algorithms['xxh64'] = xxhash.xxh64
-        except (ImportError, AttributeError):
+            for name in ('xxh32', 'xxh64'):
+                try:
+                    vars(self)[name] = getattr(xxhash, name)
+                    self.algorithms_available.update([name])
+                except AttributeError:
+                    pass
+        except ImportError:
             pass
 
-        self.algorithms_available = set(
-            tuple(hashlib.algorithms_available) +
-            tuple(self.extended_algorithms.keys()))
-        self._hashlib_algorithms = hashlib.algorithms_available
         self.algorithms_guaranteed = hashlib.algorithms_guaranteed
-        for algo in hashlib.algorithms_guaranteed:
-            vars(self)[algo] = getattr(hashlib, algo)
 
-    def new(self, algo, **kwargs):
-        if algo in self.extended_algorithms:
-            return self.extended_algorithms[algo](**kwargs)
-        else:
-            return hashlib.new(algo, **kwargs)
+    def new(self, name, *args, **kwargs):
+        return getattr(self, name)(*args, **kwargs)
 
 
 if __name__ == '__main__':
