@@ -75,6 +75,8 @@ class VanityHash:
     ctx = None
     # Total number of hashes searched, across all children
     total_searched = 0
+    # Total number of work-seconds done by workers
+    total_time_searched = 0.0
     # Total number of hashes found, across all children
     total_found = 0
     # In append mode, whether the binary result has been printed yet
@@ -212,7 +214,7 @@ class VanityHash:
         # Final statistics.
         now = datetime.datetime.now()
         elapsed = now - self.start_time
-        hashes_per_sec = self.total_searched / elapsed.total_seconds()
+        hashes_per_sec = self.total_searched / (self.total_time_searched / self.workers_real)
         logging.info('Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space, {}.'.format(
             elapsed,
             self.total_found,
@@ -461,6 +463,7 @@ class VanityHash:
             return
         if msg[0] == 'PROGRESS':
             self.total_searched += msg[2]
+            self.total_time_searched += msg[3]
             logging.debug('{} reported {} searched in {:0.04f} seconds'.format(
                 msg[1],
                 msg[2],
@@ -511,7 +514,7 @@ class VanityHash:
         elapsed = now - self.start_time
         percent = self.total_searched / (self.space_max * self.workers_real_fraction) * 100
         if self.total_searched > 0:
-            hashes_per_sec = self.total_searched / elapsed.total_seconds()
+            hashes_per_sec = self.total_searched / (self.total_time_searched / self.workers_real)
             try:
                 estimated_time = strip_microseconds(datetime.timedelta(
                     seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
