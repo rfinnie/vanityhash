@@ -102,7 +102,7 @@ class VanityHash:
     # Whether vanityhash is in the middle of shutting down
     in_shutdown = False
     # Time object in use
-    timeobj = time.time
+    clock = time.time
 
     # Argparse object
     args = None
@@ -137,16 +137,18 @@ class VanityHash:
             return
 
         # Figure out the most appropriate time counter
-        try:
-            time.monotonic()
-            self.timeobj = time.monotonic
-        except (AttributeError, NotImplementedError):
-            pass
-        try:
-            time.perf_counter()
-            self.timeobj = time.perf_counter
-        except (AttributeError, NotImplementedError):
-            pass
+        for mode in ('perf_counter', 'monotonic', 'clock'):
+            try:
+                info = time.get_clock_info(mode)
+            except ValueError:
+                continue
+            if not info.monotonic:
+                continue
+            if info.resolution > 1e-06:
+                continue
+            self.clock = getattr(time, mode)
+            self.clock()
+            break
 
         self.ctx = ExtendedHashlib().new(self.args.digest_type)
         # Pre-compute the largest integer to be tested.
@@ -253,7 +255,7 @@ class VanityHash:
 
         # Start out with a group of 10,000 hashes.  This will be revised
         # to be approximately 2 seconds worth of hashes.
-        last_report = self.timeobj()
+        last_report = self.clock()
         report_i = 10000
         i = num_begin
 
@@ -284,7 +286,7 @@ class VanityHash:
                         self.queue.put(('FOUND', worker_name, (hexdigest, i)))
                     i += self.workers_total
 
-            now = self.timeobj()
+            now = self.clock()
 
             # Figure out how many hashes were performed, and update the
             # parent.
