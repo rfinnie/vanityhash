@@ -306,7 +306,7 @@ class VanityHash:
         )
 
         parser.add_argument(
-            '--bits', '-b', type=int, default=24,
+            '--bits', '-b', type=int, default=32,
             help='Search space, in bits',
         )
         parser.add_argument(

@@ -32,7 +32,7 @@ If no matches are found, the original data only is outputted.
 
 -b *bits*, --bits=*bits*
 :   Space to be searched, in bits.  Allowed values range from 1 to 64.  
-    Default is 24.
+    Default is 32.
     Search spaces larger than the host operating system's native (i.e. 64 on a 32-bit operating system) will incur a performance penalty.
 
 -t *bits*, --bits-pack=*bits*
