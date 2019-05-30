@@ -103,7 +103,7 @@ If no matches are found, the original data only is outputted.
 --debug
 :   Print extra debugging information.
 
--?, --help
+-h, --help
 :   Print a synposis and exit.
 
 # BUGS / LIMITATIONS
