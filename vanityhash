@@ -30,9 +30,6 @@ import queue
 import time
 import datetime
 import codecs
-import zlib
-import copy
-import random
 import logging
 import io
 
