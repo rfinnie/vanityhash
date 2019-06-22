@@ -28,6 +28,8 @@ When the *--append* option is specified, this behavior changes.
 If a match is found, the original input data plus the extra data (in byte form) are outputted, and searching ends after the first successful match.
 If no matches are found, the original data only is outputted.
 
+A special "hex fragment" keyword of "benchmark" turns on standardized benchmark test options, and runs for 60 seconds.
+
 # OPTIONS
 
 -b *bits*, --bits=*bits*
@@ -79,6 +81,15 @@ If no matches are found, the original data only is outputted.
 
 --deadline=*seconds*
 :   The maximum number of seconds to run workers before finishing.
+
+--read-file=*filename*
+:   File to read data from.
+    Defaults to "-" (STDIN).
+
+--write-file=*filename*
+:   File to write data to.
+    Must be different from from the read file.
+    Defaults to "-" (STDOUT).
 
 --list-digests
 :   Print a list of available digests and exit.

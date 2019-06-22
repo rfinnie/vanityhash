@@ -34,6 +34,7 @@ import zlib
 import copy
 import random
 import logging
+import io
 
 
 __version__ = '2.0'
@@ -228,8 +229,8 @@ class VanityHash:
                 break
 
         if self.args.append and self.args.append_empty and not self.printed_append:
-            sys.stdout.buffer.write(b'\x00' * int(self.args.bits_pack / 8))
-            sys.stdout.buffer.flush()
+            self.args.write_file.write(b'\x00' * int(self.args.bits_pack / 8))
+            self.args.write_file.flush()
             self.printed_append = True
 
         # Final statistics.
@@ -375,6 +376,18 @@ class VanityHash:
             help='Where to add a zeroed pack in append mode, if no match is found',
         )
         parser.add_argument(
+            '--benchmark', action='store_true',
+            help='Turn on options for "standard" benchmark',
+        )
+        parser.add_argument(
+            '--read-file', type=argparse.FileType('rb'), default='-',
+            help='File to read',
+        )
+        parser.add_argument(
+            '--write-file', type=argparse.FileType('wb'), default='-',
+            help='File to write',
+        )
+        parser.add_argument(
             '--list-digests', action='store_true',
             help='List available digests',
         )
@@ -384,6 +397,19 @@ class VanityHash:
         )
 
         args = parser.parse_args(args=argv[1:])
+
+        if args.find == 'benchmark':
+            args.bits = 64
+            args.digest = 'md5'
+            args.deadline = 60.0
+            args.find = 'f00fc7c8'
+            args.read_file = io.BytesIO(b'foo\n')
+
+        if hasattr(args.read_file, 'buffer'):
+            args.read_file = args.read_file.buffer
+
+        if hasattr(args.write_file, 'buffer'):
+            args.write_file = args.write_file.buffer
 
         if '=' in args.digest_type:
             (args.digest_type, digest_len) = args.digest_type.split('=')
@@ -499,8 +525,8 @@ class VanityHash:
             self.total_found += 1
             if self.args.append:
                 if not self.printed_append:
-                    sys.stdout.buffer.write(msgdata)
-                    sys.stdout.buffer.flush()
+                    self.args.write_file.write(msgdata)
+                    self.args.write_file.flush()
                     self.printed_append = True
                     self.kill_children()
             else:
@@ -513,15 +539,15 @@ class VanityHash:
         logging.info('Reading input data and adding to digest...')
         datalen = 0
         while True:
-            buf = sys.stdin.buffer.read(1024)
+            buf = self.args.read_file.read(1024)
             if not buf:
                 break
             if self.args.append:
-                sys.stdout.buffer.write(buf)
+                self.args.write_file.write(buf)
             datalen += len(buf)
             self.ctx.update(buf)
         if self.args.append:
-            sys.stdout.buffer.flush()
+            self.args.write_file.flush()
         logging.info('Done.')
 
         origdigest = self.ctx.copy().hexdigest(*self.digest_args, **self.digest_kwargs)
