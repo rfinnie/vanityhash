@@ -566,13 +566,21 @@ class VanityHash:
                 remaining = strip_microseconds(datetime.timedelta(
                     seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
                 ))
-                logging.info('{:0.02f}% searched in {}, ~{} remaining of ~{}, {}'.format(
-                    percent,
-                    strip_microseconds(elapsed),
-                    remaining,
-                    estimated_time,
-                    pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
-                ))
+                if remaining > datetime.timedelta(days=365):
+                    logging.info('{:0.02f}% searched in {} of ~{}, {}'.format(
+                        percent,
+                        strip_microseconds(elapsed),
+                        estimated_time,
+                        pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
+                    ))
+                else:
+                    logging.info('{:0.02f}% searched in {}, ~{} remaining of ~{}, {}'.format(
+                        percent,
+                        strip_microseconds(elapsed),
+                        remaining,
+                        estimated_time,
+                        pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
+                    ))
             except OverflowError:
                 logging.info('{:0.02f}% searched in {}, {}'.format(
                     percent,
