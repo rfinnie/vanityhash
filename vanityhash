@@ -32,6 +32,7 @@ import datetime
 import codecs
 import logging
 import io
+import statistics
 
 
 __version__ = '2.0'
@@ -71,12 +72,8 @@ class VanityHash:
     queue = multiprocessing.Queue()
     # hashlib context
     ctx = None
-    # Total number of hashes searched, across all children
-    total_searched = 0
-    # Total number of work-seconds done by workers
-    total_time_searched = 0.0
-    # Total number of hashes found, across all children
-    total_found = 0
+    # Dict of per-worker search statistics
+    search_stats = None
     # In append mode, whether the binary result has been printed yet
     printed_append = False
     # Start time
@@ -109,6 +106,7 @@ class VanityHash:
         self.workers_real_l = []
         self.digest_args = []
         self.digest_kwargs = {}
+        self.search_stats = {}
 
     def main(self):
         """Main program loop."""
@@ -233,15 +231,27 @@ class VanityHash:
         # Final statistics.
         now = datetime.datetime.now()
         elapsed = now - self.start_time
-        hashes_per_sec = self.total_searched / (self.total_time_searched / self.workers_real)
+        total_searched = sum([x['searched'] for x in self.search_stats.values()])
+        total_found = sum([x['found'] for x in self.search_stats.values()])
+        worker_hashes_per_sec = [x['searched'] / x['time'] for x in self.search_stats.values() if x['time'] > 0]
         logging.info('Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space, {}.'.format(
             elapsed,
-            self.total_found,
-            ((self.total_found != 1) and 'es' or ''),
-            ((self.total_searched - 1) / self.space_max * 100),
+            total_found,
+            ((total_found != 1) and 'es' or ''),
+            ((total_searched - 1) / self.space_max * 100),
             self.args.bits,
-            pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
+            pretty_number(sum(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
         ))
+        if len(worker_hashes_per_sec) > 1:
+            stdev = statistics.stdev(worker_hashes_per_sec)
+            logging.info(
+                'Worker standard deviation: {} ({:.1%}), lowest {}, highest {}'.format(
+                    pretty_number(stdev, format='{number:0.02f} {prefix}hash/s'),
+                    stdev / (sum(worker_hashes_per_sec) / len(worker_hashes_per_sec)),
+                    pretty_number(min(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
+                    pretty_number(max(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
+                )
+            )
 
     def worker(self, worker_name, num_begin):
         """Process hash instructions in a subprocess.
@@ -505,9 +515,15 @@ class VanityHash:
             msg = self.queue.get(block=True, timeout=1.0)
         except queue.Empty:
             return
+        if msg[1] not in self.search_stats:
+            self.search_stats[msg[1]] = {
+                'found': 0,
+                'searched': 0,
+                'time': 0.0,
+            }
         if msg[0] == 'PROGRESS':
-            self.total_searched += msg[2]
-            self.total_time_searched += msg[3]
+            self.search_stats[msg[1]]['searched'] += msg[2]
+            self.search_stats[msg[1]]['time'] += msg[3]
             logging.debug('{} reported {} searched in {:0.04f} seconds'.format(
                 msg[1],
                 msg[2],
@@ -519,7 +535,7 @@ class VanityHash:
             logging.info('Match found: 0x{} -> {} {}'.format(
                 bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest),
             )
-            self.total_found += 1
+            self.search_stats[msg[1]]['found'] += 1
             if self.args.append:
                 if not self.printed_append:
                     self.args.write_file.write(msgdata)
@@ -556,15 +572,16 @@ class VanityHash:
         if not now > self.next_progress_time:
             return
         elapsed = now - self.start_time
-        percent = self.total_searched / (self.space_max * self.workers_real_fraction) * 100
-        if self.total_searched > 0:
-            hashes_per_sec = self.total_searched / (self.total_time_searched / self.workers_real)
+        total_searched = sum([x['searched'] for x in self.search_stats.values()])
+        percent = total_searched / (self.space_max * self.workers_real_fraction) * 100
+        if total_searched > 0:
+            hashes_per_sec = sum([x['searched'] / x['time'] for x in self.search_stats.values() if x['time'] > 0])
             try:
                 estimated_time = strip_microseconds(datetime.timedelta(
                     seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
                 ))
                 remaining = strip_microseconds(datetime.timedelta(
-                    seconds=((self.space_max * self.workers_real_fraction - self.total_searched) / hashes_per_sec),
+                    seconds=((self.space_max * self.workers_real_fraction - total_searched) / hashes_per_sec),
                 ))
                 if remaining > datetime.timedelta(days=365):
                     logging.info('{:0.02f}% searched in {} of ~{}, {}'.format(
@@ -589,8 +606,8 @@ class VanityHash:
                 ))
         else:
             logging.info('{:0.02f}% searched in {}'.format(
-                strip_microseconds(percent),
-                elapsed,
+                percent,
+                strip_microseconds(elapsed),
             ))
         self.next_progress_time = now + datetime.timedelta(seconds=self.args.progress_interval)
 
