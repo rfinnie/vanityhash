@@ -383,10 +383,6 @@ class VanityHash:
             help='Where to add a zeroed pack in append mode, if no match is found',
         )
         parser.add_argument(
-            '--benchmark', action='store_true',
-            help='Turn on options for "standard" benchmark',
-        )
-        parser.add_argument(
             '--read-file', type=argparse.FileType('rb'), default='-',
             help='File to read',
         )
