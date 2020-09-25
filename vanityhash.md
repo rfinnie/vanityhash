@@ -28,8 +28,6 @@ When the *\-\-append* option is specified, this behavior changes.
 If a match is found, the original input data plus the extra data (in byte form) are outputted, and searching ends after the first successful match.
 If no matches are found, the original data only is outputted.
 
-A special "hex fragment" keyword of "benchmark" turns on standardized benchmark test options, and runs for 60 seconds.
-
 # OPTIONS
 
 -b *bits*, \-\-bits=*bits*
@@ -106,6 +104,9 @@ A special "hex fragment" keyword of "benchmark" turns on standardized benchmark 
 -e, \-\-append-empty
 :   When using \-\-append, if a match is not found, add empty (zeroed) pack bytes anyway.
     This way, the STDOUT data will always be the same byte length no matter if a match is found or not.
+
+\-\-benchmark
+:   Run a standardize 1 minute benchmark.
 
 -q, \-\-quiet
 :   Normally vanityhash sends a fair amount of status information to STDERR during operation.
