@@ -8,7 +8,7 @@ vanityhash - A hex hash fragment creation tool
 
 vanityhash [*options*] hexfragment < inputfile
 
-vanityhash *--append* [*options*] hexfragment < inputfile > outputfile
+vanityhash *\-\-append* [*options*] hexfragment < inputfile > outputfile
 
 # DESCRIPTION
 
@@ -24,7 +24,7 @@ For example, given a 24-bit search space, vanityhash will run from 0x00000000 to
 A desired hex fragment can be larger than the search space (for example, searching for "abcdef" in a 16-bit search space), but the chances of finding a match reduce drastically the larger the desired hex fragment is.
 
 In its default operation, vanityhash will search the entire specified search space and output all matching results to STDOUT, one result per line, in the form "extradata hash", where both "extradata" and "hash" are in hex form.
-When the *--append* option is specified, this behavior changes.
+When the *\-\-append* option is specified, this behavior changes.
 If a match is found, the original input data plus the extra data (in byte form) are outputted, and searching ends after the first successful match.
 If no matches are found, the original data only is outputted.
 
@@ -32,39 +32,39 @@ A special "hex fragment" keyword of "benchmark" turns on standardized benchmark 
 
 # OPTIONS
 
--b *bits*, --bits=*bits*
+-b *bits*, \-\-bits=*bits*
 :   Space to be searched, in bits.  Allowed values range from 1 to 64.  
     Default is 32.
     Search spaces larger than the host operating system's native (i.e. 64 on a 32-bit operating system) will incur a performance penalty.
 
--t *bits*, --bits-pack=*bits*
+-t *bits*, \-\-bits-pack=*bits*
 :   By default, the size used to contain the search space is computed automatically.
     For example, a 24-bit search space requires a 32-bit (4-byte) pack.
     If you would like to use a larger pack size, this can be specified.
-    For example, to search a 24-bit space by appending 8 bytes, use "--bits=24 --bits-pack=64".
-    Must be 8, 16, 32, or 64, and must be equal to or larger than --bits.
+    For example, to search a 24-bit space by appending 8 bytes, use "\-\-bits=24 \-\-bits-pack=64".
+    Must be 8, 16, 32, or 64, and must be equal to or larger than \-\-bits.
 
--p *position*, --position=*position*
+-p *position*, \-\-position=*position*
 :   The position within the hex hash to look for the desired fragment, in hex digits.
     The beginning starts at 0.
     Default is 0.
     Negative numbers extend backward from the end of the hash.
 
--y, --any-position
-:   When enabled, this option will override --position and will return hashes that contain the desired fragment in any position within the hash.
+-y, \-\-any-position
+:   When enabled, this option will override \-\-position and will return hashes that contain the desired fragment in any position within the hash.
 
--n, --byte-order=*order*
+-n, \-\-byte-order=*order*
 :   Used to set the byte order (endianness) of the space being searched.
     Values are "native", "little" or "big".
     Default is "native".
     Use this when spreading workers over multiple machines whose architectures differ in endianness (but this incurs a performance penalty).
 
--s *seconds*, --progress=*seconds*
+-s *seconds*, \-\-progress=*seconds*
 :   The number of seconds between printing of progress lines, default 5 seconds.
     A decimal value may be specified.
     A value of 0 disabled printing progress lines.
 
--w *workers*, --workers=*workers*
+-w *workers*, \-\-workers=*workers*
 :   The number of workers to be spawned.
     Default is the number of logical processors if this can be determined, otherwise 1.
     Recommended value is the number of logical processors on the running system.
@@ -79,42 +79,42 @@ A special "hex fragment" keyword of "benchmark" turns on standardized benchmark 
     This sets a worker space of 8 workers, but only launches workers 1, 3, 5 and 7 on host1, and 2, 4, 6 and 8 on host2.
     To do this, the input data must be on all hosts, and ideally the vanityhash version should be the same as well.
 
---deadline=*seconds*
+\-\-deadline=*seconds*
 :   The maximum number of seconds to run workers before finishing.
 
---read-file=*filename*
+\-\-read-file=*filename*
 :   File to read data from.
     Defaults to "-" (STDIN).
 
---write-file=*filename*
+\-\-write-file=*filename*
 :   File to write data to.
     Must be different from from the read file.
     Defaults to "-" (STDOUT).
 
---list-digests
+\-\-list-digests
 :   Print a list of available digests and exit.
 
--d *digesttype*, --digest=*digesttype*
+-d *digesttype*, \-\-digest=*digesttype*
 :   The hashing digest type to use.  Default is "md5".
     Digests available depend on the OpenSSL compiled against Python.
 
--a, --append
+-a, \-\-append
 :   When enabled, the original data is outputted back to STDOUT.
     Then, when/if the first matching hash is found, the data fragment used to produce the matching hash is outputted to STDOUT.
     STDOUT can then be redirected to another file to produce the modified file.
 
--e, --append-empty
-:   When using --append, if a match is not found, add empty (zeroed) pack bytes anyway.
+-e, \-\-append-empty
+:   When using \-\-append, if a match is not found, add empty (zeroed) pack bytes anyway.
     This way, the STDOUT data will always be the same byte length no matter if a match is found or not.
 
--q, --quiet
+-q, \-\-quiet
 :   Normally vanityhash sends a fair amount of status information to STDERR during operation.
     When enabled, all non-error status information is instead suppressed.
 
---debug
+\-\-debug
 :   Print extra debugging information.
 
--h, --help
+-h, \-\-help
 :   Print a synposis and exit.
 
 # BUGS / LIMITATIONS
