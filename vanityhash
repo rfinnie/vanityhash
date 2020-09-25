@@ -2,7 +2,7 @@
 
 ########################################################################
 # vanityhash, a hex hash fragment creation tool
-# Copyright (C) 2010-2018 Ryan Finnie <ryan@finnie.org>
+# Copyright (C) 2010-2020 Ryan Finnie <ryan@finnie.org>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -20,29 +20,29 @@
 # 02110-1301, USA.
 ########################################################################
 
-import os
-import sys
 import argparse
-import hashlib
-import struct
-import multiprocessing
-import queue
-import time
-import datetime
 import codecs
-import logging
+import datetime
+import hashlib
 import io
+import logging
+import multiprocessing
+import os
+import queue
 import statistics
+import struct
+import sys
+import time
 
 
-__version__ = '2.0'
+__version__ = "2.0"
 
 
-def pretty_number(n, divisor=1000, rollover=1.0, format='{number:0.02f} {prefix}'):
+def pretty_number(n, divisor=1000, rollover=1.0, format="{number:0.02f} {prefix}"):
     if divisor == 1024:
-        prefixes = ['', 'Ki', 'Mi', 'Gi', 'Ti']
+        prefixes = ["", "Ki", "Mi", "Gi", "Ti"]
     else:
-        prefixes = ['', 'K', 'M', 'G', 'T']
+        prefixes = ["", "K", "M", "G", "T"]
     ppos = 0
     max_ppos = len(prefixes) - 1
     while n >= (divisor * rollover):
@@ -59,7 +59,7 @@ def strip_microseconds(td):
 
 def bytes_to_hex(b):
     """Return a hex representation of binary byte data."""
-    return codecs.encode(b, 'hex_codec').decode('ascii')
+    return codecs.encode(b, "hex_codec").decode("ascii")
 
 
 class VanityHash:
@@ -68,6 +68,7 @@ class VanityHash:
     Child subprocesses will have access to the instance of this class,
     forked from the main process.
     """
+
     # multiprocessing queue object
     queue = multiprocessing.Queue()
     # hashlib context
@@ -89,7 +90,7 @@ class VanityHash:
     # Proporition of real to total workers
     workers_real_fraction = 0.0
     # Pack type of hash candidates
-    pack_type = b'=L'
+    pack_type = b"=L"
     # Dict of args for digest() / hexdigest()
     digest_args = None
     # Dict of kwargs for digest() / hexdigest()
@@ -120,20 +121,17 @@ class VanityHash:
             logging_level = logging.ERROR
         else:
             logging_level = logging.INFO
-        logging.basicConfig(
-            format='%(message)s',
-            level=logging_level
-        )
+        logging.basicConfig(format="%(message)s", level=logging_level)
 
         if self.args.list_digests:
-            for digest in sorted(set(
-                [x.lower() for x in ExtendedHashlib().algorithms_available],
-            )):
+            for digest in sorted(
+                set([x.lower() for x in ExtendedHashlib().algorithms_available])
+            ):
                 print(digest)
             return
 
         # Figure out the most appropriate time counter
-        for mode in ('perf_counter', 'monotonic', 'clock'):
+        for mode in ("perf_counter", "monotonic", "clock"):
             try:
                 info = time.get_clock_info(mode)
             except ValueError:
@@ -158,98 +156,126 @@ class VanityHash:
             self.space_max += 2 ** i
 
         # Build a pack type based on the bits_pack size.
-        if self.args.byte_order == 'little':
-            self.pack_type = b'<'
-        elif self.args.byte_order == 'big':
-            self.pack_type = b'>'
+        if self.args.byte_order == "little":
+            self.pack_type = b"<"
+        elif self.args.byte_order == "big":
+            self.pack_type = b">"
         else:
-            self.pack_type = b'='
+            self.pack_type = b"="
         if self.args.bits_pack == 64:
-            self.pack_type += b'Q'
+            self.pack_type += b"Q"
         elif self.args.bits_pack == 32:
-            self.pack_type += b'L'
+            self.pack_type += b"L"
         elif self.args.bits_pack == 16:
-            self.pack_type += b'H'
+            self.pack_type += b"H"
         else:
-            self.pack_type += b'B'
+            self.pack_type += b"B"
 
         # Read stdin data.
         self.read_data()
 
         if self.args.find_any_pos:
-            logging.info('Searching for {} at any position in a {}-bit space.'.format(
-                self.args.find, self.args.bits,
-            ))
+            logging.info(
+                "Searching for {} at any position in a {}-bit space.".format(
+                    self.args.find, self.args.bits
+                )
+            )
         else:
-            logging.info('Searching for {} at position {} in a {}-bit space.'.format(
-                self.args.find, self.args.find_pos, self.args.bits,
-            ))
+            logging.info(
+                "Searching for {} at position {} in a {}-bit space.".format(
+                    self.args.find, self.args.find_pos, self.args.bits
+                )
+            )
 
         self.start_time = datetime.datetime.now()
 
         # Spawn worker children.
         for i in self.workers_real_l:
-            worker_name = 'Worker {}'.format(i + 1)
-            p = multiprocessing.Process(target=self.worker, args=(worker_name, i,))
+            worker_name = "Worker {}".format(i + 1)
+            p = multiprocessing.Process(target=self.worker, args=(worker_name, i))
             p.name = worker_name
             p.start()
 
         if self.workers_total == self.workers_real:
-            logging.info('Spawned {} worker{}.'.format(
-                self.workers_real, ((self.workers_real != 1) and 's' or ''),
-            ))
+            logging.info(
+                "Spawned {} worker{}.".format(
+                    self.workers_real, ((self.workers_real != 1) and "s" or "")
+                )
+            )
         else:
-            logging.info('Spawned {} of {} worker{} ({}).'.format(
-                self.workers_real,
-                self.workers_total,
-                ((self.workers_total != 1) and 's' or ''),
-                (','.join(str(x + 1) for x in self.workers_real_l)),
-            ))
+            logging.info(
+                "Spawned {} of {} worker{} ({}).".format(
+                    self.workers_real,
+                    self.workers_total,
+                    ((self.workers_total != 1) and "s" or ""),
+                    (",".join(str(x + 1) for x in self.workers_real_l)),
+                )
+            )
 
         # Loop through messages from children, occasionally reporting
         # hashing progress.
-        self.next_progress_time = self.start_time + datetime.timedelta(seconds=self.args.progress_interval)
+        self.next_progress_time = self.start_time + datetime.timedelta(
+            seconds=self.args.progress_interval
+        )
         while True:
             try:
                 self.process_message()
                 self.report_progress()
             except KeyboardInterrupt:
-                logging.info('Stopping workers...')
+                logging.info("Stopping workers...")
                 self.kill_children()
 
-            if self.args.deadline and (datetime.datetime.now() - self.start_time).total_seconds() >= self.args.deadline:
+            if (
+                self.args.deadline
+                and (datetime.datetime.now() - self.start_time).total_seconds()
+                >= self.args.deadline
+            ):
                 self.kill_children()
 
             if len(multiprocessing.active_children()) == 0:
                 break
 
         if self.args.append and self.args.append_empty and not self.printed_append:
-            self.args.write_file.write(b'\x00' * int(self.args.bits_pack / 8))
+            self.args.write_file.write(b"\x00" * int(self.args.bits_pack / 8))
             self.args.write_file.flush()
             self.printed_append = True
 
         # Final statistics.
         now = datetime.datetime.now()
         elapsed = now - self.start_time
-        total_searched = sum([x['searched'] for x in self.search_stats.values()])
-        total_found = sum([x['found'] for x in self.search_stats.values()])
-        worker_hashes_per_sec = [x['searched'] / x['time'] for x in self.search_stats.values() if x['time'] > 0]
-        logging.info('Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space, {}.'.format(
-            elapsed,
-            total_found,
-            ((total_found != 1) and 'es' or ''),
-            ((total_searched - 1) / self.space_max * 100),
-            self.args.bits,
-            pretty_number(sum(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
-        ))
+        total_searched = sum([x["searched"] for x in self.search_stats.values()])
+        total_found = sum([x["found"] for x in self.search_stats.values()])
+        worker_hashes_per_sec = [
+            x["searched"] / x["time"]
+            for x in self.search_stats.values()
+            if x["time"] > 0
+        ]
+        logging.info(
+            "Search finished in {}, {} match{} found in {:0.02f}% of a {}-bit space, {}.".format(
+                elapsed,
+                total_found,
+                ((total_found != 1) and "es" or ""),
+                ((total_searched - 1) / self.space_max * 100),
+                self.args.bits,
+                pretty_number(
+                    sum(worker_hashes_per_sec), format="{number:0.02f} {prefix}hash/s"
+                ),
+            )
+        )
         if len(worker_hashes_per_sec) > 1:
             stdev = statistics.stdev(worker_hashes_per_sec)
             logging.info(
-                'Worker standard deviation: {} ({:.1%}), lowest {}, highest {}'.format(
-                    pretty_number(stdev, format='{number:0.02f} {prefix}hash/s'),
+                "Worker standard deviation: {} ({:.1%}), lowest {}, highest {}".format(
+                    pretty_number(stdev, format="{number:0.02f} {prefix}hash/s"),
                     stdev / (sum(worker_hashes_per_sec) / len(worker_hashes_per_sec)),
-                    pretty_number(min(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
-                    pretty_number(max(worker_hashes_per_sec), format='{number:0.02f} {prefix}hash/s'),
+                    pretty_number(
+                        min(worker_hashes_per_sec),
+                        format="{number:0.02f} {prefix}hash/s",
+                    ),
+                    pretty_number(
+                        max(worker_hashes_per_sec),
+                        format="{number:0.02f} {prefix}hash/s",
+                    ),
                 )
             )
 
@@ -286,17 +312,21 @@ class VanityHash:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
+                    hexdigest = ctxcopy.hexdigest(
+                        *self.digest_args, **self.digest_kwargs
+                    )
                     if hexdigest.find(to_find) > -1:
-                        self.queue.put(('FOUND', worker_name, (hexdigest, i)))
+                        self.queue.put(("FOUND", worker_name, (hexdigest, i)))
                     i += self.workers_total
             else:
                 while i <= group_num_end:
                     ctxcopy = self.ctx.copy()
                     ctxcopy.update(struct.pack(self.pack_type, i))
-                    hexdigest = ctxcopy.hexdigest(*self.digest_args, **self.digest_kwargs)
+                    hexdigest = ctxcopy.hexdigest(
+                        *self.digest_args, **self.digest_kwargs
+                    )
                     if hexdigest[find_pos:find_pos_end] == to_find:
-                        self.queue.put(('FOUND', worker_name, (hexdigest, i)))
+                        self.queue.put(("FOUND", worker_name, (hexdigest, i)))
                     i += self.workers_total
 
             now = self.clock()
@@ -304,7 +334,7 @@ class VanityHash:
             # Figure out how many hashes were performed, and update the
             # parent.
             report_i = int((i - group_i_begin) / self.workers_total)
-            self.queue.put(('PROGRESS', worker_name, report_i, (now - last_report)))
+            self.queue.put(("PROGRESS", worker_name, report_i, (now - last_report)))
 
             # Figure out how many hashes are needed to run for the next
             # ~2 seconds.
@@ -318,110 +348,145 @@ class VanityHash:
             argv = sys.argv
 
         parser = argparse.ArgumentParser(
-            description='vanityhash ({})'.format(__version__),
+            description="vanityhash ({})".format(__version__),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             prog=os.path.basename(argv[0]),
         )
 
         parser.add_argument(
-            '--version', '-V', action='version',
+            "--version",
+            "-V",
+            action="version",
             version=__version__,
-            help='report the program version',
+            help="report the program version",
         )
 
         parser.add_argument(
-            'find', type=str, default=None, nargs='?',
-            help='Hex string to search for',
+            "find", type=str, default=None, nargs="?", help="Hex string to search for"
         )
 
         parser.add_argument(
-            '--bits', '-b', type=int, default=32,
-            help='Search space, in bits',
+            "--bits", "-b", type=int, default=32, help="Search space, in bits"
         )
         parser.add_argument(
-            '--workers', '-w', dest='workers_s', type=str, default='guess',
-            help='Worker specification',
+            "--workers",
+            "-w",
+            dest="workers_s",
+            type=str,
+            default="guess",
+            help="Worker specification",
         )
         parser.add_argument(
-            '--digest', '-d', dest='digest_type', type=str, default='md5',
-            help='Hash digest type',
+            "--digest",
+            "-d",
+            dest="digest_type",
+            type=str,
+            default="md5",
+            help="Hash digest type",
         )
         parser.add_argument(
-            '--progress', '-s', dest='progress_interval', type=float, default=5.0,
-            help='How often to display progress information, in seconds',
+            "--progress",
+            "-s",
+            dest="progress_interval",
+            type=float,
+            default=5.0,
+            help="How often to display progress information, in seconds",
         )
         parser.add_argument(
-            '--append', '-a', action='store_true',
-            help='Whether to output the original data + the first result',
+            "--append",
+            "-a",
+            action="store_true",
+            help="Whether to output the original data + the first result",
         )
         parser.add_argument(
-            '--bits-pack', '-t', type=int, default=0,
-            help='Total size containing the search space, in bits',
+            "--bits-pack",
+            "-t",
+            type=int,
+            default=0,
+            help="Total size containing the search space, in bits",
         )
         parser.add_argument(
-            '--any_position', '-y', dest='find_any_pos', action='store_true',
-            help='Whether to find the desired fragment anywhere in the hash',
+            "--any_position",
+            "-y",
+            dest="find_any_pos",
+            action="store_true",
+            help="Whether to find the desired fragment anywhere in the hash",
         )
         parser.add_argument(
-            '--quiet', '-q', action='store_true',
-            help='Whether to display human-readable information to stderr',
+            "--quiet",
+            "-q",
+            action="store_true",
+            help="Whether to display human-readable information to stderr",
         )
         parser.add_argument(
-            '--debug', action='store_true',
-            help='Print extra debugging information.',
+            "--debug", action="store_true", help="Print extra debugging information."
         )
         parser.add_argument(
-            '--position', '-p', dest='find_pos', type=int, default=0,
-            help='Zero-indexed position within the hash to search',
+            "--position",
+            "-p",
+            dest="find_pos",
+            type=int,
+            default=0,
+            help="Zero-indexed position within the hash to search",
         )
         parser.add_argument(
-            '--byte-order', '-n', choices=['native', 'little', 'big'], default='native',
-            help='Endianness of the built container',
+            "--byte-order",
+            "-n",
+            choices=["native", "little", "big"],
+            default="native",
+            help="Endianness of the built container",
         )
         parser.add_argument(
-            '--append-empty', '-e', action='store_true',
-            help='Where to add a zeroed pack in append mode, if no match is found',
+            "--append-empty",
+            "-e",
+            action="store_true",
+            help="Where to add a zeroed pack in append mode, if no match is found",
         )
         parser.add_argument(
-            '--read-file', type=argparse.FileType('rb'), default='-',
-            help='File to read',
+            "--read-file",
+            type=argparse.FileType("rb"),
+            default="-",
+            help="File to read",
         )
         parser.add_argument(
-            '--write-file', type=argparse.FileType('wb'), default='-',
-            help='File to write',
+            "--write-file",
+            type=argparse.FileType("wb"),
+            default="-",
+            help="File to write",
         )
         parser.add_argument(
-            '--list-digests', action='store_true',
-            help='List available digests',
+            "--list-digests", action="store_true", help="List available digests"
         )
         parser.add_argument(
-            '--deadline', type=float, default=0.0,
-            help='Maximum processing time (seconds)',
+            "--deadline",
+            type=float,
+            default=0.0,
+            help="Maximum processing time (seconds)",
         )
 
         args = parser.parse_args(args=argv[1:])
 
-        if args.find == 'benchmark':
+        if args.find == "benchmark":
             args.bits = 64
-            args.digest = 'md5'
+            args.digest = "md5"
             args.deadline = 60.0
-            args.find = 'f00fc7c8'
-            args.read_file = io.BytesIO(b'foo\n')
+            args.find = "f00fc7c8"
+            args.read_file = io.BytesIO(b"foo\n")
 
-        if hasattr(args.read_file, 'buffer'):
+        if hasattr(args.read_file, "buffer"):
             args.read_file = args.read_file.buffer
 
-        if hasattr(args.write_file, 'buffer'):
+        if hasattr(args.write_file, "buffer"):
             args.write_file = args.write_file.buffer
 
-        if '=' in args.digest_type:
-            (args.digest_type, digest_len) = args.digest_type.split('=')
+        if "=" in args.digest_type:
+            (args.digest_type, digest_len) = args.digest_type.split("=")
             self.digest_args = [int(digest_len)]
 
-        if args.digest_type == 'sha1alt':
-            args.digest_type = 'sha1'
+        if args.digest_type == "sha1alt":
+            args.digest_type = "sha1"
         if (args.bits < 1) or (args.bits > 64):
-            parser.error('Search space must be 64 bits or less')
+            parser.error("Search space must be 64 bits or less")
 
         # Generate the container size if not specified.
         if args.bits_pack == 0:
@@ -432,29 +497,29 @@ class VanityHash:
                 args.bits_pack = 8
         # Validate the container size.
         if (args.bits_pack < args.bits) or (args.bits_pack > 64):
-            parser.error('Invalid bits-pack')
+            parser.error("Invalid bits-pack")
         # Make sure the container size is a power of 2.
         bits_pack_bytes = int(args.bits_pack / 8)
         if not (bits_pack_bytes & (bits_pack_bytes - 1)) == 0:
-            parser.error('Invalid bits-pack')
+            parser.error("Invalid bits-pack")
 
         # Validate the desired hex fragment
         if args.find is None:
             if not args.list_digests:
-                parser.error('Hex string required')
+                parser.error("Hex string required")
             # Fake value, won't be using it for list_digests
-            args.find = 'ffffffff'
+            args.find = "ffffffff"
         for i in args.find:
-            if i not in '0 1 2 3 4 5 6 7 8 9 a b c d e f'.split():
-                parser.error('Invalid search hex string')
+            if i not in "0 1 2 3 4 5 6 7 8 9 a b c d e f".split():
+                parser.error("Invalid search hex string")
 
         # Build the worker options.
-        if args.workers_s == 'guess':
+        if args.workers_s == "guess":
             try:
                 args.workers_s = str(len(os.sched_getaffinity(0)))
             except AttributeError:
                 pass
-        if args.workers_s == 'guess':
+        if args.workers_s == "guess":
             try:
                 args.workers_s = str(multiprocessing.cpu_count())
             except NotImplementedError:
@@ -468,29 +533,29 @@ class VanityHash:
             # If a specification is given, validate and build according
             # to the specification.
             try:
-                (workert, workerx) = args.workers_s.split(':')
+                (workert, workerx) = args.workers_s.split(":")
             except ValueError:
-                parser.error('Invalid worker specification')
+                parser.error("Invalid worker specification")
             self.workers_total = int(workert)
-            for i in workerx.split(','):
+            for i in workerx.split(","):
                 if not i.isdigit():
-                    parser.error('Invalid worker specification')
+                    parser.error("Invalid worker specification")
                 i = int(i)
                 if (i > self.workers_total) or (i < 1):
-                    parser.error('Invalid worker specification')
+                    parser.error("Invalid worker specification")
                 if not (i - 1) in self.workers_real_l:
                     self.workers_real_l.append(i - 1)
                 self.workers_real_l.sort()
         self.workers_real = len(self.workers_real_l)
         if (self.workers_total < 1) or (self.workers_real < 1):
-            parser.error('Invalid number of workers')
+            parser.error("Invalid number of workers")
         self.workers_real_fraction = self.workers_real / self.workers_total
 
         # Test the hash type is valid.
         try:
             testctx = ExtendedHashlib().new(args.digest_type)
         except ValueError:
-            parser.error('Invalid digest type')
+            parser.error("Invalid digest type")
 
         # Test the position specified is correct according to the given
         # hash type.
@@ -499,8 +564,10 @@ class VanityHash:
         if args.find_pos < 0:
             args.find_pos += hexdigestsize
         if args.find_pos > maxpos:
-            parser.error('Pattern position {} goes beyond end of {} digest'.format(
-                args.find_pos, args.digest_type.upper()),
+            parser.error(
+                "Pattern position {} goes beyond end of {} digest".format(
+                    args.find_pos, args.digest_type.upper()
+                )
             )
 
         return args
@@ -512,26 +579,24 @@ class VanityHash:
         except queue.Empty:
             return
         if msg[1] not in self.search_stats:
-            self.search_stats[msg[1]] = {
-                'found': 0,
-                'searched': 0,
-                'time': 0.0,
-            }
-        if msg[0] == 'PROGRESS':
-            self.search_stats[msg[1]]['searched'] += msg[2]
-            self.search_stats[msg[1]]['time'] += msg[3]
-            logging.debug('{} reported {} searched in {:0.04f} seconds'.format(
-                msg[1],
-                msg[2],
-                msg[3],
-            ))
-        elif msg[0] == 'FOUND':
+            self.search_stats[msg[1]] = {"found": 0, "searched": 0, "time": 0.0}
+        if msg[0] == "PROGRESS":
+            self.search_stats[msg[1]]["searched"] += msg[2]
+            self.search_stats[msg[1]]["time"] += msg[3]
+            logging.debug(
+                "{} reported {} searched in {:0.04f} seconds".format(
+                    msg[1], msg[2], msg[3]
+                )
+            )
+        elif msg[0] == "FOUND":
             (msgdigest, msgdata) = msg[2]
             msgdata = struct.pack(self.pack_type, msgdata)
-            logging.info('Match found: 0x{} -> {} {}'.format(
-                bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest),
+            logging.info(
+                "Match found: 0x{} -> {} {}".format(
+                    bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest
+                )
             )
-            self.search_stats[msg[1]]['found'] += 1
+            self.search_stats[msg[1]]["found"] += 1
             if self.args.append:
                 if not self.printed_append:
                     self.args.write_file.write(msgdata)
@@ -539,13 +604,13 @@ class VanityHash:
                     self.printed_append = True
                     self.kill_children()
             else:
-                sys.stdout.write('{} {}\n'.format(bytes_to_hex(msgdata), msgdigest))
+                sys.stdout.write("{} {}\n".format(bytes_to_hex(msgdata), msgdigest))
                 sys.stdout.flush()
 
     def read_data(self):
         """Read data from stdin and build the initial hash context."""
         self.ctx = ExtendedHashlib().new(self.args.digest_type)
-        logging.info('Reading input data and adding to digest...')
+        logging.info("Reading input data and adding to digest...")
         datalen = 0
         while True:
             buf = self.args.read_file.read(1024)
@@ -557,10 +622,14 @@ class VanityHash:
             self.ctx.update(buf)
         if self.args.append:
             self.args.write_file.flush()
-        logging.info('Done.')
+        logging.info("Done.")
 
         origdigest = self.ctx.copy().hexdigest(*self.digest_args, **self.digest_kwargs)
-        logging.info('Original data: {} bytes, {} {}'.format(datalen, self.args.digest_type.upper(), origdigest))
+        logging.info(
+            "Original data: {} bytes, {} {}".format(
+                datalen, self.args.digest_type.upper(), origdigest
+            )
+        )
 
     def report_progress(self):
         """Occasionally output progress statistics."""
@@ -568,44 +637,76 @@ class VanityHash:
         if not now > self.next_progress_time:
             return
         elapsed = now - self.start_time
-        total_searched = sum([x['searched'] for x in self.search_stats.values()])
+        total_searched = sum([x["searched"] for x in self.search_stats.values()])
         percent = total_searched / (self.space_max * self.workers_real_fraction) * 100
         if total_searched > 0:
-            hashes_per_sec = sum([x['searched'] / x['time'] for x in self.search_stats.values() if x['time'] > 0])
+            hashes_per_sec = sum(
+                [
+                    x["searched"] / x["time"]
+                    for x in self.search_stats.values()
+                    if x["time"] > 0
+                ]
+            )
             try:
-                estimated_time = strip_microseconds(datetime.timedelta(
-                    seconds=((self.space_max * self.workers_real_fraction) / hashes_per_sec),
-                ))
-                remaining = strip_microseconds(datetime.timedelta(
-                    seconds=((self.space_max * self.workers_real_fraction - total_searched) / hashes_per_sec),
-                ))
+                estimated_time = strip_microseconds(
+                    datetime.timedelta(
+                        seconds=(
+                            (self.space_max * self.workers_real_fraction)
+                            / hashes_per_sec
+                        )
+                    )
+                )
+                remaining = strip_microseconds(
+                    datetime.timedelta(
+                        seconds=(
+                            (
+                                self.space_max * self.workers_real_fraction
+                                - total_searched
+                            )
+                            / hashes_per_sec
+                        )
+                    )
+                )
                 if remaining > datetime.timedelta(days=365):
-                    logging.info('{:0.02f}% searched in {} of ~{}, {}'.format(
-                        percent,
-                        strip_microseconds(elapsed),
-                        estimated_time,
-                        pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
-                    ))
+                    logging.info(
+                        "{:0.02f}% searched in {} of ~{}, {}".format(
+                            percent,
+                            strip_microseconds(elapsed),
+                            estimated_time,
+                            pretty_number(
+                                hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                            ),
+                        )
+                    )
                 else:
-                    logging.info('{:0.02f}% searched in {}, ~{} remaining of ~{}, {}'.format(
+                    logging.info(
+                        "{:0.02f}% searched in {}, ~{} remaining of ~{}, {}".format(
+                            percent,
+                            strip_microseconds(elapsed),
+                            remaining,
+                            estimated_time,
+                            pretty_number(
+                                hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                            ),
+                        )
+                    )
+            except OverflowError:
+                logging.info(
+                    "{:0.02f}% searched in {}, {}".format(
                         percent,
                         strip_microseconds(elapsed),
-                        remaining,
-                        estimated_time,
-                        pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
-                    ))
-            except OverflowError:
-                logging.info('{:0.02f}% searched in {}, {}'.format(
-                    percent,
-                    strip_microseconds(elapsed),
-                    pretty_number(hashes_per_sec, format='{number:0.02f} {prefix}hash/s'),
-                ))
+                        pretty_number(
+                            hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                        ),
+                    )
+                )
         else:
-            logging.info('{:0.02f}% searched in {}'.format(
-                percent,
-                strip_microseconds(elapsed),
-            ))
-        self.next_progress_time = now + datetime.timedelta(seconds=self.args.progress_interval)
+            logging.info(
+                "{:0.02f}% searched in {}".format(percent, strip_microseconds(elapsed))
+            )
+        self.next_progress_time = now + datetime.timedelta(
+            seconds=self.args.progress_interval
+        )
 
     def kill_children(self):
         """Kill all child subprocesses."""
@@ -618,6 +719,7 @@ class VanityHash:
 
 class ExtendedHashlib:
     """hashlib-compatible extension system."""
+
     def __init__(self):
         self.algorithms_available = set()
         for name in hashlib.algorithms_available:
@@ -629,6 +731,7 @@ class ExtendedHashlib:
 
         try:
             import hashlib_additional
+
             for name in hashlib_additional.algorithms_available:
                 try:
                     vars(self)[name] = getattr(hashlib_additional, name)
@@ -641,7 +744,8 @@ class ExtendedHashlib:
         # https://github.com/rfinnie/vanityhash/issues/1
         try:
             import xxhash
-            for name in ('xxh32', 'xxh64'):
+
+            for name in ("xxh32", "xxh64"):
                 try:
                     vars(self)[name] = getattr(xxhash, name)
                     self.algorithms_available.update([name])
@@ -656,6 +760,6 @@ class ExtendedHashlib:
         return getattr(self, name)(*args, **kwargs)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     vh = VanityHash()
     vh.main()
