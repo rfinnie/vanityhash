@@ -38,6 +38,10 @@ import time
 __version__ = "2.0"
 
 
+# Quick fix for Python 3.8+ on macOS changing from "fork" to "spawn"
+multiprocessing.set_start_method("fork")
+
+
 def pretty_number(n, divisor=1000, rollover=1.0, format="{number:0.02f} {prefix}"):
     if divisor == 1024:
         prefixes = ["", "Ki", "Mi", "Gi", "Ti"]
