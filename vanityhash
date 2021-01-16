@@ -649,74 +649,81 @@ class VanityHash:
         elapsed = now - self.start_time
         total_searched = sum([x["searched"] for x in self.search_stats.values()])
         percent = total_searched / (self.space_max * self.workers_real_fraction) * 100
-        if total_searched > 0:
-            hashes_per_sec = sum(
-                [
-                    x["searched"] / x["time"]
-                    for x in self.search_stats.values()
-                    if x["time"] > 0
-                ]
-            )
-            try:
-                estimated_time = strip_microseconds(
-                    datetime.timedelta(
-                        seconds=(
-                            (self.space_max * self.workers_real_fraction)
-                            / hashes_per_sec
-                        )
-                    )
-                )
-                remaining = strip_microseconds(
-                    datetime.timedelta(
-                        seconds=(
-                            (
-                                self.space_max * self.workers_real_fraction
-                                - total_searched
-                            )
-                            / hashes_per_sec
-                        )
-                    )
-                )
-                if remaining > datetime.timedelta(days=365):
-                    logging.info(
-                        "{:0.02f}% searched in {} of ~{}, {}".format(
-                            percent,
-                            strip_microseconds(elapsed),
-                            estimated_time,
-                            pretty_number(
-                                hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
-                            ),
-                        )
-                    )
-                else:
-                    logging.info(
-                        "{:0.02f}% searched in {}, ~{} remaining of ~{}, {}".format(
-                            percent,
-                            strip_microseconds(elapsed),
-                            remaining,
-                            estimated_time,
-                            pretty_number(
-                                hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
-                            ),
-                        )
-                    )
-            except OverflowError:
-                logging.info(
-                    "{:0.02f}% searched in {}, {}".format(
-                        percent,
-                        strip_microseconds(elapsed),
-                        pretty_number(
-                            hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
-                        ),
-                    )
-                )
-        else:
-            logging.info(
-                "{:0.02f}% searched in {}".format(percent, strip_microseconds(elapsed))
-            )
+
         self.next_progress_time = now + datetime.timedelta(
             seconds=self.args.progress_interval
         )
+
+        if total_searched == 0:
+            logging.info(
+                "{:0.02f}% searched in {}".format(percent, strip_microseconds(elapsed))
+            )
+            return
+
+        hashes_per_sec = sum(
+            [
+                x["searched"] / x["time"]
+                for x in self.search_stats.values()
+                if x["time"] > 0
+            ]
+        )
+        try:
+            estimated_time = strip_microseconds(
+                datetime.timedelta(
+                    seconds=(
+                        (self.space_max * self.workers_real_fraction) / hashes_per_sec
+                    )
+                )
+            )
+            remaining = strip_microseconds(
+                datetime.timedelta(
+                    seconds=(
+                        (self.space_max * self.workers_real_fraction - total_searched)
+                        / hashes_per_sec
+                    )
+                )
+            )
+        except OverflowError:
+            estimated_time = None
+            remaining = None
+
+        if (
+            (estimated_time is None)
+            or (remaining is None)
+            or (remaining > datetime.timedelta(days=10000))
+        ):
+            logging.info(
+                "{:0.02f}% searched in {}, {}".format(
+                    percent,
+                    strip_microseconds(elapsed),
+                    pretty_number(
+                        hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                    ),
+                )
+            )
+        elif remaining > datetime.timedelta(days=365):
+            logging.info(
+                "{:0.02f}% searched in {} of ~{}, {}".format(
+                    percent,
+                    strip_microseconds(elapsed),
+                    estimated_time,
+                    pretty_number(
+                        hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                    ),
+                )
+            )
+        else:
+            logging.info(
+                "{:0.02f}% searched in {}, ~{} remaining of ~{}, {}".format(
+                    percent,
+                    strip_microseconds(elapsed),
+                    remaining,
+                    estimated_time,
+                    pretty_number(
+                        hashes_per_sec, format="{number:0.02f} {prefix}hash/s"
+                    ),
+                )
+            )
 
     def kill_children(self):
         """Kill all child subprocesses."""
