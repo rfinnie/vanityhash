@@ -12,6 +12,7 @@ import io
 import logging
 import multiprocessing
 import os
+import platform
 import queue
 import statistics
 import struct
@@ -266,6 +267,16 @@ class VanityHash:
                     ),
                 )
             )
+        if self.args.benchmark:
+            logging.info(
+                "Python: {} {}, {}, {}".format(
+                    platform.python_implementation(),
+                    platform.python_version(),
+                    ", ".join(platform.python_build()),
+                    platform.python_compiler(),
+                )
+            )
+            logging.info("Platform: {}".format(" ".join(platform.uname())))
 
     def worker(self, worker_name, num_begin):
         """Process hash instructions in a subprocess.
