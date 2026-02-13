@@ -4,12 +4,12 @@ http://www.finnie.org/software/vanityhash/
 
 ABOUT
 
-vanityhash is a tool that can discover data to be added to the end of a 
-file to produce a desired hex hash fragment.  It searches a message 
-space and runs a hashing algorithm against the original data plus the 
-appended data to determine if the desired hash fragment is present.  
-vanityhash can run multiple parallel workers to effectively make use of 
-multiple processors/cores/threads, and supports multiple hash digest 
+vanityhash is a tool that can discover data to be added to the end of a
+file to produce a desired hex hash fragment.  It searches a message
+space and runs a hashing algorithm against the original data plus the
+appended data to determine if the desired hash fragment is present.
+vanityhash can run multiple parallel workers to effectively make use of
+multiple processors/cores/threads, and supports multiple hash digest
 types (MD5, SHA1, SHA256, etc).
 
 INSTALLATION

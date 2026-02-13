@@ -1,0 +1,20 @@
+[project]
+name = "vanityhash"
+authors = [
+    {name = "Ryan Finnie", email = "ryan@finnie.org"},
+]
+description = "A hex hash fragment creation tool"
+readme = "README"
+requires-python = ">=3.8"
+license = {text = "MPL-2.0"}
+dynamic = ["version"]
+
+[tool.setuptools]
+script-files = ["vanityhash"]
+
+[tool.black]
+line-length = 132
+
+# https://pypi.org/project/Flake8-pyproject/
+[tool.flake8]
+max-line-length = 132
