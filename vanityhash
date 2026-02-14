@@ -22,9 +22,6 @@ import time
 
 __version__ = "2.0"
 
-# Quick fix for Python 3.8+ on macOS changing from "fork" to "spawn"
-multiprocessing.set_start_method("fork")
-
 
 def pretty_number(n, divisor=1000, rollover=1.0, format="{number:0.02f} {prefix}"):
     if divisor == 1024:
@@ -57,8 +54,11 @@ class VanityHash:
     forked from the main process.
     """
 
+    # multiprocessing context
+    # Fork is needed on all platforms for openssl context support
+    mp = multiprocessing.get_context(method="fork")
     # multiprocessing queue object
-    queue = multiprocessing.Queue()
+    queue = mp.Queue()
     # hashlib context
     ctx = None
     # Dict of per-worker search statistics
@@ -172,7 +172,7 @@ class VanityHash:
         # Spawn worker children.
         for i in self.workers_real_l:
             worker_name = "Worker {}".format(i + 1)
-            p = multiprocessing.Process(target=self.worker, args=(worker_name, i))
+            p = self.mp.Process(target=self.worker, args=(worker_name, i))
             p.name = worker_name
             p.start()
 
@@ -202,7 +202,7 @@ class VanityHash:
             if self.args.deadline and (datetime.datetime.now() - self.start_time).total_seconds() >= self.args.deadline:
                 self.kill_children()
 
-            if len(multiprocessing.active_children()) == 0:
+            if len(self.mp.active_children()) == 0:
                 break
 
         if self.args.append and self.args.append_empty and not self.printed_append:
@@ -489,7 +489,7 @@ class VanityHash:
                 pass
         if args.workers_s == "guess":
             try:
-                args.workers_s = str(multiprocessing.cpu_count())
+                args.workers_s = str(self.mp.cpu_count())
             except NotImplementedError:
                 args.workers_s = str(1)
         if args.workers_s.isdigit():
@@ -643,7 +643,7 @@ class VanityHash:
         if self.in_shutdown:
             return
         self.in_shutdown = True
-        for child_process in multiprocessing.active_children():
+        for child_process in self.mp.active_children():
             child_process.terminate()
 
 
