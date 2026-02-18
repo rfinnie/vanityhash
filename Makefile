@@ -1,3 +1,9 @@
+# SPDX-PackageName: vanityhash
+# SPDX-PackageSupplier: Ryan Finnie <ryan@finnie.org>
+# SPDX-PackageDownloadLocation: https://github.com/rfinnie/vanityhash
+# SPDX-FileCopyrightText: © 2010 Ryan Finnie <ryan@finnie.org>
+# SPDX-License-Identifier: MPL-2.0
+
 PREFIX := /usr/local
 
 all: vanityhash

@@ -127,3 +127,13 @@ It currently does not work on Windows, due to Python multiprocessing limitations
 
 `vanityhash` was written by Ryan Finnie <ryan@finnie.org>.
 vanityhash was inspired by Seth David Schoen's 2003 program, hash_search.
+
+# LICENSE
+
+This document is provided under the following license:
+
+    SPDX-PackageName: vanityhash
+    SPDX-PackageSupplier: Ryan Finnie <ryan@finnie.org>
+    SPDX-PackageDownloadLocation: https://github.com/rfinnie/vanityhash
+    SPDX-FileCopyrightText: © 2010 Ryan Finnie <ryan@finnie.org>
+    SPDX-License-Identifier: CC-BY-SA-4.0

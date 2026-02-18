@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
-# vanityhash, a hex hash fragment creation tool
-# Copyright (C) 2010-2021 Ryan Finnie <ryan@finnie.org>
+# SPDX-PackageName: vanityhash
+# SPDX-PackageSupplier: Ryan Finnie <ryan@finnie.org>
+# SPDX-PackageDownloadLocation: https://github.com/rfinnie/vanityhash
+# SPDX-FileCopyrightText: © 2010 Ryan Finnie <ryan@finnie.org>
 # SPDX-License-Identifier: MPL-2.0
 
 import argparse
@@ -18,7 +20,6 @@ import statistics
 import struct
 import sys
 import time
-
 
 __version__ = "2.0"
 
@@ -448,7 +449,7 @@ class VanityHash:
             args.write_file = args.write_file.buffer
 
         if "=" in args.digest_type:
-            (args.digest_type, digest_len) = args.digest_type.split("=")
+            args.digest_type, digest_len = args.digest_type.split("=")
             self.digest_args = [int(digest_len)]
 
         if args.digest_type == "sha1alt":
@@ -501,7 +502,7 @@ class VanityHash:
             # If a specification is given, validate and build according
             # to the specification.
             try:
-                (workert, workerx) = args.workers_s.split(":")
+                workert, workerx = args.workers_s.split(":")
             except ValueError:
                 parser.error("Invalid worker specification")
             self.workers_total = int(workert)
@@ -549,7 +550,7 @@ class VanityHash:
             self.search_stats[msg[1]]["time"] += msg[3]
             logging.debug("{} reported {} searched in {:0.04f} seconds".format(msg[1], msg[2], msg[3]))
         elif msg[0] == "FOUND":
-            (msgdigest, msgdata) = msg[2]
+            msgdigest, msgdata = msg[2]
             msgdata = struct.pack(self.pack_type, msgdata)
             logging.info("Match found: 0x{} -> {} {}".format(bytes_to_hex(msgdata), self.args.digest_type.upper(), msgdigest))
             self.search_stats[msg[1]]["found"] += 1

@@ -1,47 +1,60 @@
-extends: 'default'
+# SPDX-PackageName: vanityhash
+# SPDX-PackageSupplier: Ryan Finnie <ryan@finnie.org>
+# SPDX-PackageDownloadLocation: https://github.com/rfinnie/vanityhash
+# SPDX-FileComment: yamllint config
+# SPDX-FileCopyrightText: © 2026 Ryan Finnie <ryan@finnie.org>
+# SPDX-License-Identifier: MPL-2.0
+---
+extends: "default"
 
 rules:
   braces:
     max-spaces-inside: 1
-    max-spaces-inside-empty: 1
-    min-spaces-inside-empty: 1
-    level: 'error'
+    max-spaces-inside-empty: 0
+    min-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    level: "error"
   brackets:
     max-spaces-inside: 0
-    min-spaces-inside: 0
     max-spaces-inside-empty: 0
+    min-spaces-inside: 0
     min-spaces-inside-empty: 0
-    level: 'error'
+    level: "error"
   colons:
     max-spaces-after: 1
-    level: 'error'
+    level: "error"
   commas:
     max-spaces-after: -1
-    level: 'error'
-  comments-indentation:
-    level: 'error'
+    level: "error"
   comments:
     ignore-shebangs: true
-    level: 'error'
+    level: "error"
     min-spaces-from-content: 1
     require-starting-space: true
+  comments-indentation:
+    level: "error"
+  document-start:
+    present: true
+    level: "error"
   empty-lines:
     max: 2
-    level: 'error'
+    level: "error"
   hyphens:
     max-spaces-after: 1
-    level: 'error'
+    level: "error"
   indentation:
     spaces: 2
-  key-duplicates: 'enable'
+  key-duplicates: "enable"
   line-length:
     max: 160
-    level: 'warning'
+    level: "warning"
   new-lines:
-    type: 'unix'
+    type: "unix"
   quoted-strings:
-    quote-type: 'single'
+    quote-type: "any"
     required: true
   truthy:
-    allowed-values: ['true', 'false']
-    level: 'error'
+    allowed-values:
+      - "true"
+      - "false"
+    level: "error"
