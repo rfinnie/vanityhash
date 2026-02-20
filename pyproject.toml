@@ -18,5 +18,8 @@ dynamic = ["version"]
 [tool.setuptools]
 script-files = ["vanityhash"]
 
+[tool.setuptools.packages.find]
+include = []
+
 [tool.black]
 line-length = 132
