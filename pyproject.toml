@@ -12,7 +12,7 @@ authors = [
 description = "A hex hash fragment creation tool"
 readme = "README"
 requires-python = ">=3.8"
-license = {text = "MPL-2.0"}
+license = "MPL-2.0"
 dynamic = ["version"]
 
 [tool.setuptools]
