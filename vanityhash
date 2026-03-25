@@ -84,6 +84,8 @@ class VanityHash:
     digest_args = None
     # Dict of kwargs for digest() / hexdigest()
     digest_kwargs = None
+    # Dict of kwargs for new()
+    digest_new_kwargs = None
     # Whether vanityhash is in the middle of shutting down
     in_shutdown = False
     # Time object in use
@@ -96,6 +98,7 @@ class VanityHash:
         self.workers_real_l = []
         self.digest_args = []
         self.digest_kwargs = {}
+        self.digest_new_kwargs = {}
         self.search_stats = {}
 
     def main(self):
@@ -136,7 +139,7 @@ class VanityHash:
             self.clock()
             break
 
-        self.ctx = ExtendedHashlib().new(self.args.digest_type)
+        self.ctx = ExtendedHashlib().new(self.args.digest_type, **self.digest_new_kwargs)
         # Pre-compute the largest integer to be tested.
         self.space_max = 0
         for i in range(0, self.args.bits):
@@ -358,6 +361,12 @@ class VanityHash:
             help="Hash digest type",
         )
         parser.add_argument(
+            "--digest-size",
+            dest="digest_size",
+            type=int,
+            help="Hash digest size for compatible digests",
+        )
+        parser.add_argument(
             "--progress",
             "-s",
             dest="progress_interval",
@@ -451,6 +460,8 @@ class VanityHash:
         if "=" in args.digest_type:
             args.digest_type, digest_len = args.digest_type.split("=")
             self.digest_args = [int(digest_len)]
+        if args.digest_size:
+            self.digest_new_kwargs["digest_size"] = args.digest_size
 
         if args.digest_type == "sha1alt":
             args.digest_type = "sha1"
@@ -522,7 +533,7 @@ class VanityHash:
 
         # Test the hash type is valid.
         try:
-            testctx = ExtendedHashlib().new(args.digest_type)
+            testctx = ExtendedHashlib().new(args.digest_type, **self.digest_new_kwargs)
         except ValueError:
             parser.error("Invalid digest type")
 
@@ -566,7 +577,7 @@ class VanityHash:
 
     def read_data(self):
         """Read data from stdin and build the initial hash context."""
-        self.ctx = ExtendedHashlib().new(self.args.digest_type)
+        self.ctx = ExtendedHashlib().new(self.args.digest_type, **self.digest_new_kwargs)
         logging.info("Reading input data and adding to digest...")
         datalen = 0
         while True:
