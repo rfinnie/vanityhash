@@ -10,7 +10,7 @@ authors = [
     {name = "Ryan Finnie", email = "ryan@finnie.org"},
 ]
 description = "A hex hash fragment creation tool"
-readme = "README"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "MPL-2.0"
 dynamic = ["version"]
