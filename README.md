@@ -1,5 +1,8 @@
 # vanityhash
 
+[![Git forge repository](https://img.shields.io/badge/git-forge-orange?logo=forgejo)](https://forge.colobox.com/rfinnie/vanityhash)
+[![CI pipeline status](https://woodpecker.colobox.com/api/badges/60/status.svg)](https://woodpecker.colobox.com/repos/60)
+
 http://www.finnie.org/software/vanityhash/
 
 vanityhash is a tool that can discover data to be added to the end of a file to produce a desired hex hash fragment.
