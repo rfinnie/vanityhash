@@ -324,7 +324,6 @@ class VanityHash:
         parser = argparse.ArgumentParser(
             description="vanityhash ({})".format(__version__),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-            prog=os.path.basename(argv[0]),
         )
 
         parser.add_argument(
